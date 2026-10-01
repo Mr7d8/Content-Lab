@@ -10,8 +10,7 @@
   },
   "dependencies": {
     "@content-lab/core": "workspace:*",
-    "@supabase/supabase-js": "^2.117.2",
-    "apify": "^3.7.2"
+    "@supabase/supabase-js": "^2.117.2"
   },
   "devDependencies": {
     "@types/node": "^22.19.0",

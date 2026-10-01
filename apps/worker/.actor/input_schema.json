@@ -1,0 +1,14 @@
+{
+  "title": "Content Lab worker input",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "runId": {
+      "title": "Run id",
+      "type": "string",
+      "description": "The runs.id to process. The dashboard sets this when you start a run.",
+      "editor": "textfield"
+    }
+  },
+  "required": ["runId"]
+}
