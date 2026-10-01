@@ -1,1 +1,152 @@
 @import "tailwindcss";
+
+/* Apple-style tokens shared with the other internal tools. */
+:root {
+  --ink: #1d1d1f;
+  --sub: #6e6e73;
+  --faint: #86868b;
+  --paper: #f5f5f7;
+  --line: rgba(0, 0, 0, 0.07);
+  --card-bg: rgba(255, 255, 255, 0.78);
+  --card-bg-solid: #ffffff;
+  --accent: #0a84ff;
+  --green: #30d158;
+  --orange: #ff9f0a;
+  --red: #ff453a;
+  --fill: rgba(120, 120, 128, 0.12);
+  --fill-strong: rgba(120, 120, 128, 0.2);
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.1);
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+}
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-sub: var(--sub);
+  --color-faint: var(--faint);
+  --color-paper: var(--paper);
+  --color-line: var(--line);
+  --color-card: var(--card-bg-solid);
+  --color-accent: var(--accent);
+  --color-green: var(--green);
+  --color-orange: var(--orange);
+  --color-red: var(--red);
+  --color-fill: var(--fill);
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  color: var(--ink);
+  background: var(--paper);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer components {
+  .glass {
+    background: var(--card-bg);
+    backdrop-filter: blur(24px) saturate(1.6);
+    -webkit-backdrop-filter: blur(24px) saturate(1.6);
+    box-shadow: var(--shadow);
+  }
+  .card {
+    background: var(--card-bg-solid);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 5px 11px;
+    border-radius: 999px;
+    border: none;
+    background: var(--fill);
+    color: var(--ink);
+    white-space: nowrap;
+    transition: background 0.15s ease;
+  }
+  button.chip {
+    cursor: pointer;
+  }
+  button.chip:hover {
+    background: var(--fill-strong);
+  }
+  .chip.active {
+    background: var(--ink);
+    color: #fff;
+  }
+  .btn-primary,
+  .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 999px;
+    border: none;
+    cursor: pointer;
+    transition: opacity 0.15s ease, background 0.15s ease;
+  }
+  .btn-primary {
+    background: var(--ink);
+    color: #fff;
+  }
+  .btn-secondary {
+    background: var(--fill);
+    color: var(--ink);
+  }
+  .btn-primary:disabled,
+  .btn-secondary:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .field {
+    font: inherit;
+    font-size: 13px;
+    padding: 9px 12px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: rgba(120, 120, 128, 0.1);
+    color: var(--ink);
+    outline: none;
+    width: 100%;
+  }
+  .field:focus {
+    background: rgba(120, 120, 128, 0.16);
+  }
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    color: #fff;
+    text-transform: capitalize;
+  }
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
