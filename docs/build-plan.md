@@ -75,7 +75,7 @@ Source values carry the channel as a prefix, so a future channel adds new values
   - Category sweeps in Creative Center for **Morocco**, **MENA** and **France**, each for App Install and Purchase objectives, refreshed monthly. MENA expands to its countries in `packages/core`.
   - Advertiser watchlists for the global e-commerce leaders **Temu**, **Shein** and **AliExpress** in any region, refreshed weekly, for best-in-class creative.
   - Regional competitors (Noon, Namshi, Jumia, Sephora and others) can be added as advertiser watchlists later from the Collect screen.
-- Scheduled refresh: weekly for competitor watchlists, monthly for the full category sweep.
+- Scheduled refresh: weekly for competitor watchlists, monthly for the full category sweep. A daily Apify Schedule starts the worker in sweep mode, which runs the due watchlists under a monthly spend cap ($5 to start); see [research-mode.md](research-mode.md).
 
 **Watch-outs**
 
@@ -330,7 +330,7 @@ Status of the five choices to settle before Phase 1 starts.
 | Where the worker runs | Custom Apify actor, Railway or Fly.io, local machine | Decided: Apify actor. Already in your stack, billed per run, no server to maintain |
 | Classification model | Claude for everything, or a vision model plus Jev | Decided: Gemini free tier for the vision pass, TypeSafe Jev for classification. Claude stays a config switch for the vision pass and brief writing |
 | Who uses it | Ossama only, marketing team, creative teams too | Decided for now: Ossama only. Add the marketing team to `team_members` later; creative teams receive the brief, not the dashboard |
-| Owner and budget | Personal project, Wasal tool with a monthly budget line | Decided for now: free tiers first (see Costs), with a per-run spend cap; decide ownership before scheduled sweeps outgrow them |
+| Owner and budget | Personal project, Wasal tool with a monthly budget line | Decided for now: free tiers first (see Costs), with a per-run spend cap and a $5 monthly cap for scheduled sweeps; decide ownership before sweeps outgrow them |
 | Name | Content Lab, or another name | Recommended: keep Content Lab as the working name |
 
 - [x] Confirm the competitor watchlist for the first sweep: Morocco, MENA, France, plus Temu, Shein and AliExpress in any region
