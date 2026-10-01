@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { type NextRequest, NextResponse } from 'next/server';
+import { authLandingTarget } from './lib/auth-landing';
 
 // /demo shows synthetic data only.
 const PUBLIC_PATHS = ['/login', '/auth/', '/demo'];
@@ -7,6 +8,9 @@ const PUBLIC_PATHS = ['/login', '/auth/', '/demo'];
 // Refreshes the Supabase session cookie on every navigation and sends
 // signed-out visitors to /login. Data access is still enforced by RLS.
 export async function proxy(request: NextRequest) {
+  const landing = authLandingTarget(request.nextUrl);
+  if (landing) return NextResponse.redirect(landing);
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) return NextResponse.next({ request });

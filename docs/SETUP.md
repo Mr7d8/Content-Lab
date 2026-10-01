@@ -28,7 +28,11 @@ Gemini's free tier may use prompts to improve Google's models. That is fine for 
    insert into public.team_members (email) values ('you@example.com');
    ```
 
-4. Auth > URL Configuration: set the Site URL to your dashboard URL and add `https://<your-domain>/auth/callback` (and `http://localhost:3000/auth/callback` for local work) to the redirect URLs. Email magic links are on by default.
+4. Authentication > URL Configuration:
+   - **Site URL**: your dashboard URL, for example `https://content-lab-iota.vercel.app`. New projects default to `http://localhost:3000`, which sends magic links to your own computer.
+   - **Redirect URLs**: `https://content-lab-iota.vercel.app/auth/callback`, `https://*-mr7d8s-projects.vercel.app/auth/callback` (previews) and `http://localhost:3000/auth/callback` (local work). Supabase only honours redirects on this list; anything else falls back to the Site URL.
+
+   Email magic links are on by default.
 
 To check the SQL itself on a throwaway local Postgres: `DATABASE_URL=postgres://... pnpm db:check` (19 checks). After changing a migration, regenerate types with `pnpm db:types` (or `supabase gen types typescript`).
 
