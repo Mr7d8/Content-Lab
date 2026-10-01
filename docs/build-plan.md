@@ -51,6 +51,8 @@ Heavy video work runs in a separate worker so the Vercel dashboard stays light; 
 
 **One AI interface**: every AI provider (transcription, vision pass, Jev classification, brief writing) sits behind one `AIProviders` interface in `packages/core`. Each capability has its own adapter, picked by environment variables (for example `VISION_PROVIDER=gemini` or `claude`), so moving the vision pass or brief writing from Gemini to Claude is a config change, not a rewrite. Free-tier providers run behind a request pacer that respects their per-minute limits, as in Creator Lab.
 
+**Optional second vision adapter: Meta Muse Spark.** Meta's Model API (Muse Spark) accepts images and video, gives new accounts free credits, and has a cheap "contributor" tier that, like Gemini's free tier, lets Meta train on the data (fine for public ads, never for Wasal's own ads). It can be added as another adapter behind the same interface if Gemini's free-tier limits or label quality fall short; its native video input could later replace keyframes for the vision pass. Check availability from Morocco first, since the public preview has been US-first. The video host muse.ai is a different product and does not fit: it re-hosts videos and has no free tier.
+
 ## Data sources
 
 TikTok is the only channel in scope for now: four TikTok sources, each kept in its own lane. Ad libraries are the backbone, organic TikTok is a supporting signal, and our own ads come last but carry the strongest evidence.
@@ -327,12 +329,14 @@ Status of the five choices to settle before Phase 1 starts.
 | --- | --- | --- |
 | Where the worker runs | Custom Apify actor, Railway or Fly.io, local machine | Decided: Apify actor. Already in your stack, billed per run, no server to maintain |
 | Classification model | Claude for everything, or a vision model plus Jev | Decided: Gemini free tier for the vision pass, TypeSafe Jev for classification. Claude stays a config switch for the vision pass and brief writing |
-| Who uses it | Ossama only, marketing team, creative teams too | Recommended: marketing team with logins; creative teams receive the brief, not the dashboard |
+| Who uses it | Ossama only, marketing team, creative teams too | Decided for now: Ossama only. Add the marketing team to `team_members` later; creative teams receive the brief, not the dashboard |
 | Owner and budget | Personal project, Wasal tool with a monthly budget line | Decided for now: free tiers first (see Costs), with a per-run spend cap; decide ownership before scheduled sweeps outgrow them |
 | Name | Content Lab, or another name | Recommended: keep Content Lab as the working name |
 
 - [x] Confirm the competitor watchlist for the first sweep: Morocco, MENA, France, plus Temu, Shein and AliExpress in any region
 - [ ] Confirm Creative Center offers Morocco as a region filter
+- [ ] Pick the Apify actor for Creative Center ad links and check it on one test URL
+- [ ] Decide whether labels also need a written evidence note (structured evidence is stored either way)
 - [ ] Create a TypeSafe account and API key (Jev has no free tier) and a Gemini API key (free tier)
 - [ ] Pick 10 known strong TikTok ads to test classification quality by hand
 - [ ] Request TikTok Marketing API access for Wasal's ad account (needed for Phase 3)

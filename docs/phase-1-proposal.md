@@ -1,6 +1,6 @@
 # Phase 1 proposal: repo structure and schema
 
-Status: **awaiting approval**. Only the plan, this document, the migration SQL and the repo basics are committed. Nothing else gets built until you approve.
+Status: **approved** (Oct 1, 2026). Building in the order of section 5, one commit per step.
 
 Scope: TikTok only, free tiers first, classification by a vision pass plus TypeSafe Jev. See [the build plan](build-plan.md).
 
@@ -105,15 +105,14 @@ Other conventions in the SQL: `source` is open text with a channel prefix and a 
 
 **Validation done**: both migrations were applied to a clean Postgres 16 database with stand-ins for Supabase's `auth`, `storage` and Realtime publication, then 19 checks passed: outsiders blocked, team flow works, members cannot edit the allowlist, outsiders see zero rows, anon denied, `(source, external_id)` unique, spend cap required, no empty metric rows, period format, pattern uniqueness with null region, `updated_at` triggers, cascades from `items`, `frames` bucket policy, 9 first-sweep watchlists seeded, region code check, watchlist uniqueness, a music-only ad with no transcript stored and classified, `frames_json` shape, and the 512 KB bucket limit. It needs Postgres 15 or later (`unique nulls not distinct`), which new Supabase projects already use.
 
-## 4. Decisions needed before building
+## 4. Decisions
 
-1. **Approve the two extra tables** (`team_members`, `run_items`). Recommendation: yes.
-2. **How pasted TikTok links become downloadable video.** A TikTok page URL is not a media file, so the worker must resolve it.
-   - **Apify (recommended)**: run `clockworks/tiktok-scraper` on the pasted URLs with video download on. Pays a small per-result fee from the free credit, stays in your stack, and returns views, likes, shares and the sound used (for the trend sound label) at the same time.
-   - **yt-dlp in the worker image**: free, but it is unofficial scraping and breaks when TikTok changes.
-   - Creative Center ad links will need a Creative Center actor either way; I will pick one once you approve and confirm its output with a single test URL.
-3. **Evidence notes become structured evidence.** Jev returns no text, so a label's evidence is its origin, Jev's probabilities and the frames or transcript lines it was judged on, rather than a written sentence. Recommendation: accept this; if written notes matter for the brief, the brief writer can phrase them from that evidence.
-4. **First team emails** to seed into `team_members` (can also be done later in the SQL editor).
+| # | Decision | Outcome |
+| --- | --- | --- |
+| 1 | Extra tables `team_members` and `run_items` | Approved |
+| 2 | How pasted TikTok links become downloadable video | Apify only, on the free credit: `clockworks/tiktok-scraper` with video download on. It also returns views, likes, shares and the sound used. Creative Center links need a Creative Center actor, chosen and checked against one test URL before use. Meta's Muse Spark API is noted as an optional second vision adapter (see the build plan). |
+| 3 | Structured evidence instead of written notes | Open. Evidence is stored as structured data now; the record schema keeps an optional `note` per field, so written notes can be added later (by the vision model or the brief writer) without a migration. |
+| 4 | Team emails | Only Ossama for now. The email is added once in the Supabase SQL editor when the project is created, not committed to the repo. |
 
 ## 5. Build order after approval
 
