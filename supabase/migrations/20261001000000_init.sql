@@ -2,11 +2,15 @@
 --
 -- Tables: team_members, watchlists, runs, items, run_items, metrics, media,
 --         classifications, scores, patterns, briefs
--- Storage: private bucket "frames" (keyframes at frames/{item_id}/{second}.jpg)
+-- Storage: private bucket "frames" (keyframes at frames/{item_id}/{second}.webp)
 --
 -- Access model: every table has RLS. Only signed-in users whose email is in
 -- team_members can read or write. The worker uses the service role key and
 -- bypasses RLS. Raw videos are never stored.
+--
+-- Scope: TikTok only for now. `source` is open text with a channel prefix
+-- (tiktok_creative_center, tiktok_organic, tiktok_commercial_library,
+-- tiktok_own_ads), so another channel needs no schema change.
 
 -------------------------------------------------------------------------------
 -- Helpers
@@ -60,12 +64,16 @@ grant execute on function public.is_team_member() to authenticated;
 create table public.watchlists (
   id              uuid primary key default gen_random_uuid(),
   name            text not null,
-  type            text not null check (type in ('advertiser', 'keyword', 'hashtag', 'account')),
+  -- industry = a Creative Center category sweep (value is the industry).
+  type            text not null check (type in ('advertiser', 'keyword', 'hashtag', 'account', 'industry')),
   value           text not null,
-  -- Which collector this watchlist feeds, e.g. creative_center, tiktok_organic.
+  -- Which collector this watchlist feeds: tiktok_creative_center, tiktok_organic.
   source          text not null check (source ~ '^[a-z][a-z0-9_]*$'),
-  region          text,
-  objective       text,
+  -- ISO country code (MA, FR) or a region group defined in packages/core
+  -- (MENA). null means any region.
+  region          text check (region ~ '^[A-Z]{2,10}$'),
+  -- null means every objective.
+  objective       text check (objective in ('app_install', 'purchase', 'hybrid', 'brand')),
   active          boolean not null default true,
   refresh_cadence text not null default 'manual' check (refresh_cadence in ('manual', 'weekly', 'monthly')),
   created_by      uuid default auth.uid() references auth.users (id) on delete set null,
@@ -80,7 +88,7 @@ create table public.watchlists (
 
 create table public.runs (
   id                uuid primary key default gen_random_uuid(),
-  -- How items entered the run: manual_import, creative_center, tiktok_organic, ...
+  -- How items entered the run: manual_import, tiktok_creative_center, tiktok_organic, ...
   source            text not null check (source ~ '^[a-z][a-z0-9_]*$'),
   watchlist_id      uuid references public.watchlists (id) on delete set null,
   status            text not null default 'queued'
@@ -90,6 +98,7 @@ create table public.runs (
   items_failed      integer not null default 0 check (items_failed >= 0),
   cost_estimate_usd numeric(10, 4) check (cost_estimate_usd >= 0),
   -- Required: every run is started with an explicit cap shown to the user.
+  -- Covers paid calls (Apify, Jev); free-tier calls (Groq, Gemini) count as 0.
   spend_cap_usd     numeric(10, 4) not null check (spend_cap_usd > 0),
   cost_actual_usd   numeric(10, 4) not null default 0 check (cost_actual_usd >= 0),
   -- Set by the dashboard, polled by the worker between items.
@@ -113,8 +122,8 @@ create index runs_watchlist_idx on public.runs (watchlist_id);
 
 create table public.items (
   id               uuid primary key default gen_random_uuid(),
-  -- creative_center, tiktok_organic, commercial_library, own_ads; open text so
-  -- new channels need no schema change.
+  -- tiktok_creative_center, tiktok_organic, tiktok_commercial_library (phase 2),
+  -- tiktok_own_ads (phase 3). Open text so new channels need no schema change.
   source           text not null check (source ~ '^[a-z][a-z0-9_]*$'),
   source_url       text not null check (source_url ~ '^https://'),
   external_id      text not null,
@@ -147,7 +156,7 @@ create table public.run_items (
   item_id    uuid not null references public.items (id) on delete cascade,
   position   integer not null check (position >= 0),
   stage      text not null default 'fetch'
-             check (stage in ('fetch', 'extract', 'transcribe', 'classify', 'done')),
+             check (stage in ('fetch', 'extract', 'transcribe', 'vision', 'classify', 'done')),
   status     text not null default 'pending'
              check (status in ('pending', 'running', 'done', 'failed', 'skipped', 'needs_review')),
   attempts   smallint not null default 0 check (attempts >= 0),
@@ -188,13 +197,26 @@ create table public.metrics (
 create table public.media (
   item_id             uuid primary key references public.items (id) on delete cascade,
   video_hash          text check (video_hash ~ '^[0-9a-f]{64}$'),
+  -- FFmpeg measurements, kept because the raw video is deleted after extraction.
+  width               integer check (width > 0),
+  height              integer check (height > 0),
+  -- Seconds where a scene cut was detected; cut count and cuts per 10s derive from it.
+  scene_cuts          numeric[],
+  -- music_only gives an empty transcript, which is a valid classification input.
   audio_type          text check (audio_type in ('speech', 'music_only', 'silent', 'no_track')),
   transcript          text,
   transcript_lang     text,
   -- Whisper segments: [{"start": 0.0, "end": 2.4, "text": "..."}]
   transcript_segments jsonb check (transcript_segments is null or jsonb_typeof(transcript_segments) = 'array'),
-  -- On-screen text, read from keyframes by the classification call.
+  -- Vision pass, one entry per keyframe:
+  -- [{"second": 0, "description": "...", "on_screen_text": ["..."],
+  --   "elements": {"app_ui": false, "product": true, "price": true, "offer": false,
+  --                "logo": false, "cta": false, "faces": 1, "people": 1}}]
+  frames_json         jsonb check (frames_json is null or jsonb_typeof(frames_json) = 'array'),
+  -- All on-screen text from the vision pass, joined in frame order.
   ocr_text            text,
+  vision_model        text,
+  vision_version      text,
   -- Storage object paths in the frames bucket, ordered by second.
   keyframe_paths      text[] not null default '{}',
   created_at          timestamptz not null default now(),
@@ -204,10 +226,13 @@ create table public.media (
 create index media_video_hash_idx on public.media (video_hash);
 
 -------------------------------------------------------------------------------
--- classifications: taxonomy output, versioned by prompt_version
--- labels_json holds values only (fast filtering); evidence_json holds the
--- evidence note and confidence per field. Human edits go to corrections_json
--- so the model output is never overwritten.
+-- classifications: taxonomy output, versioned by prompt_version (taxonomy)
+-- and vision_version (the vision pass it was built from).
+-- labels_json holds the full record's values (fast filtering). evidence_json
+-- holds, per field, its confidence, where it came from (jev, vision, ffmpeg,
+-- metadata), Jev's probabilities and the frame seconds or transcript segments
+-- it was judged on. Jev returns no text, so there are no written notes.
+-- Human edits go to corrections_json so the model output is never overwritten.
 -------------------------------------------------------------------------------
 
 create table public.classifications (
@@ -215,11 +240,13 @@ create table public.classifications (
   item_id          uuid not null references public.items (id) on delete cascade,
   -- Copied from media for cache lookups across items that share a video.
   video_hash       text check (video_hash ~ '^[0-9a-f]{64}$'),
+  -- Classifier model, e.g. the Jev model id.
   model            text not null,
   prompt_version   text not null,
+  vision_version   text not null,
   labels_json      jsonb not null check (jsonb_typeof(labels_json) = 'object'),
   evidence_json    jsonb not null default '{}'::jsonb check (jsonb_typeof(evidence_json) = 'object'),
-  -- Lowest per-field confidence, so one weak label is never hidden by an average.
+  -- Lowest Jev confidence across fields, so one weak label is never hidden by an average.
   confidence       numeric(4, 3) check (confidence between 0 and 1),
   needs_review     boolean not null default false,
   corrections_json jsonb not null default '{}'::jsonb check (jsonb_typeof(corrections_json) = 'object'),
@@ -230,15 +257,15 @@ create table public.classifications (
   cost_usd         numeric(10, 4) check (cost_usd >= 0),
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now(),
-  constraint classifications_item_version_key unique (item_id, prompt_version, model)
+  constraint classifications_item_version_key unique (item_id, prompt_version, vision_version, model)
 );
 
-create index classifications_cache_idx on public.classifications (video_hash, prompt_version, model);
+create index classifications_cache_idx on public.classifications (video_hash, prompt_version, vision_version, model);
 create index classifications_labels_idx on public.classifications using gin (labels_json jsonb_path_ops);
 
 -------------------------------------------------------------------------------
 -- scores: within-source performance percentile per cohort
--- cohort_key example: creative_center|MA|ecommerce|app_install|2026-10
+-- cohort_key example: tiktok_creative_center|MA|ecommerce|app_install|2026-10
 -------------------------------------------------------------------------------
 
 create table public.scores (
@@ -381,10 +408,12 @@ from anon;
 -------------------------------------------------------------------------------
 -- Storage: private keyframe bucket, read through signed URLs only
 -- The worker uploads with the service role key; team members may only read.
+-- Keyframes are 540 px wide WebP, so each ad uses a few hundred KB of the
+-- Supabase Free storage quota.
 -------------------------------------------------------------------------------
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('frames', 'frames', false, 2097152, array['image/jpeg', 'image/webp'])
+values ('frames', 'frames', false, 524288, array['image/webp', 'image/jpeg'])
 on conflict (id) do nothing;
 
 create policy frames_team_read on storage.objects
@@ -392,7 +421,7 @@ create policy frames_team_read on storage.objects
   using (bucket_id = 'frames' and (select public.is_team_member()));
 
 -------------------------------------------------------------------------------
--- Realtime: live run wall and Collect progress
+-- Realtime: live run wall (Motion animations) and Collect progress
 -------------------------------------------------------------------------------
 
 alter publication supabase_realtime

@@ -4,7 +4,8 @@ Internal tool that collects top TikTok ads in our categories, tags every creativ
 
 Status: Phase 1 proposal, awaiting approval.
 
+- [Build plan](docs/build-plan.md)
 - [Phase 1 proposal: repo structure and schema](docs/phase-1-proposal.md)
-- [Initial migration](supabase/migrations/20261001000000_init.sql)
+- [Migrations](supabase/migrations/)
 
 Inspired by [Creator Lab](https://github.com/artemnovitckii/creator-lab), rebuilt for ads, for TikTok, and for decisions rather than browsing.
