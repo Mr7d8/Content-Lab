@@ -1,7 +1,8 @@
 import { createServerClient } from '@supabase/ssr';
 import { type NextRequest, NextResponse } from 'next/server';
 
-const PUBLIC_PATHS = ['/login', '/auth/'];
+// /demo shows synthetic data only.
+const PUBLIC_PATHS = ['/login', '/auth/', '/demo'];
 
 // Refreshes the Supabase session cookie on every navigation and sends
 // signed-out visitors to /login. Data access is still enforced by RLS.

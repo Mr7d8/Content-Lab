@@ -11,7 +11,7 @@ const LINKS = [
 export function Nav({ email }: { email: string }) {
   const pathname = usePathname();
   return (
-    <header className="sticky top-0 z-40 px-4 pt-4">
+    <header className="app-nav sticky top-0 z-40 px-4 pt-4">
       <nav className="glass mx-auto flex max-w-6xl items-center gap-2 rounded-full py-2 pl-5 pr-2">
         <Link href="/library" className="mr-3 text-sm font-semibold tracking-tight">
           Content Lab
