@@ -138,6 +138,7 @@ export const CtaChannel = z.enum(keys(CTA_CHANNEL));
 export const Gender = z.enum(keys(GENDER));
 export const AgeBracket = z.enum(keys(AGE_BRACKET));
 export const AspectRatio = z.enum(ASPECT_RATIOS);
+export type AspectRatio = z.infer<typeof AspectRatio>;
 
 const seconds = z.number().nonnegative().nullable();
 const count = z.number().int().nonnegative().nullable();

@@ -1,6 +1,17 @@
 import { access, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { keyframeSeconds, type Json, type Rates } from '@content-lab/core';
+import {
+  assembleRecord,
+  buildQuestions,
+  buildState,
+  joinOnScreenText,
+  keyframeSeconds,
+  PROMPT_VERSION,
+  VISION_VERSION,
+  VisionOutput,
+  type Json,
+  type Rates,
+} from '@content-lab/core';
 import { isSpeech, type AIProviders } from '@content-lab/core/ai';
 import {
   detectSceneCuts,
@@ -154,8 +165,132 @@ export const transcribeStage: StageHandler = async (ctx) => {
   ctx.log(speech ? `transcribed (${transcript.language ?? 'unknown language'})` : 'music only, empty transcript');
 };
 
+type RawJson = { caption?: string | null; music?: { original?: boolean | null } | null };
+const rawJson = (item: ItemRow): RawJson =>
+  (item.raw_json && typeof item.raw_json === 'object' && !Array.isArray(item.raw_json) ? item.raw_json : {}) as RawJson;
+
+const secondOf = (path: string) => Number(path.split('/').at(-1)?.split('.')[0]);
+
+// AI call 1: keyframes to a scene description and all on-screen text per frame.
+export const visionStage: StageHandler = async (ctx) => {
+  const { item, store } = ctx;
+  const vision = ctx.ai.vision;
+  if (!vision) throw new Error('No vision provider configured');
+  const media = await store.getMedia(item.id);
+  if (!media?.keyframe_paths.length) throw new Error('No keyframes to describe');
+  if (media.frames_json && media.vision_version === VISION_VERSION && media.vision_model === vision.name) {
+    ctx.log('vision pass already done');
+    return;
+  }
+  if (media.video_hash) {
+    const cached = await store.findMediaWithVision(media.video_hash, VISION_VERSION, vision.name);
+    if (cached && cached.item_id !== item.id) {
+      await store.upsertMedia(item.id, { frames_json: cached.frames_json, ocr_text: cached.ocr_text, vision_model: vision.name, vision_version: VISION_VERSION });
+      ctx.log('vision pass reused from the same video');
+      return;
+    }
+  }
+  const frames = await Promise.all(media.keyframe_paths.map(async (path) => ({
+    second: secondOf(path),
+    mimeType: path.endsWith('.webp') ? 'image/webp' : 'image/jpeg',
+    data: await store.downloadFrame(path),
+  })));
+  const { output } = await vision.describeFrames(frames, {
+    source: item.source,
+    advertiser: item.advertiser ?? item.account_handle,
+    caption: rawJson(item).caption ?? null,
+    durationS: item.duration_s,
+  });
+  await store.upsertMedia(item.id, {
+    frames_json: output.frames as unknown as Json,
+    ocr_text: joinOnScreenText(output.frames),
+    vision_model: vision.name,
+    vision_version: VISION_VERSION,
+  });
+  ctx.addCost(ctx.rates.visionPerItemUsd);
+  ctx.log(`vision pass on ${frames.length} keyframes`);
+};
+
+// AI call 2: Jev classifies transcript plus vision text into the taxonomy.
+// Labels are assigned here, before any metric is joined.
+export const classifyStage: StageHandler = async (ctx) => {
+  const { item, store } = ctx;
+  const classifier = ctx.ai.classifier;
+  if (!classifier) throw new Error('No classifier configured');
+  const media = await store.getMedia(item.id);
+  if (!media?.frames_json || !media.vision_version) throw new Error('Run the vision pass before classifying');
+  const frames = VisionOutput.shape.frames.parse(media.frames_json);
+
+  if (media.video_hash) {
+    const cached = await store.findClassification(media.video_hash, PROMPT_VERSION, media.vision_version, classifier.model);
+    if (cached) {
+      if (cached.item_id !== item.id) {
+        await store.saveClassification({
+          item_id: item.id, video_hash: media.video_hash, model: cached.model, prompt_version: PROMPT_VERSION,
+          vision_version: media.vision_version, labels_json: cached.labels_json, evidence_json: cached.evidence_json,
+          confidence: cached.confidence, needs_review: cached.needs_review, input_tokens: 0, cost_usd: 0,
+        });
+      }
+      ctx.log('classification reused from the same video');
+      return;
+    }
+  }
+
+  const segments = Array.isArray(media.transcript_segments)
+    ? (media.transcript_segments as { start: number | null; end: number | null; text: string }[])
+    : [];
+  const raw = rawJson(item);
+  const state = buildState({
+    source: item.source,
+    advertiser: item.advertiser ?? item.account_handle,
+    region: item.region,
+    caption: raw.caption ?? null,
+    durationS: item.duration_s,
+    audioType: media.audio_type,
+    transcript: media.transcript,
+    transcriptLang: media.transcript_lang,
+    segments,
+    frames,
+  });
+  const { answers, inputTokens } = await classifier.answer(state, buildQuestions());
+  const { record, evidence, confidence, needsReview } = assembleRecord({
+    answers,
+    frames,
+    durationS: item.duration_s,
+    sceneCuts: media.scene_cuts,
+    width: media.width,
+    height: media.height,
+    audioType: media.audio_type,
+    segments,
+    music: raw.music ? { original: raw.music.original ?? null } : null,
+  });
+  const tokens = inputTokens ?? ctx.rates.jevTokensPerItem;
+  const cost = (tokens / 1_000_000) * ctx.rates.jevPerMillionInputTokensUsd;
+  await store.saveClassification({
+    item_id: item.id,
+    video_hash: media.video_hash,
+    model: classifier.model,
+    prompt_version: PROMPT_VERSION,
+    vision_version: media.vision_version,
+    labels_json: record as unknown as Json,
+    evidence_json: evidence as unknown as Json,
+    confidence,
+    needs_review: needsReview,
+    input_tokens: inputTokens,
+    cost_usd: Number(cost.toFixed(6)),
+  });
+  ctx.addCost(cost);
+  ctx.log(`classified: ${record.format ?? 'unknown format'}, hook ${record.hook_type ?? 'unknown'}${needsReview ? ' (needs review)' : ''}`);
+};
+
 export const MEDIA_HANDLERS: Partial<Record<Stage, StageHandler>> = {
   fetch: fetchStage,
   extract: extractStage,
   transcribe: transcribeStage,
+};
+
+export const ALL_HANDLERS: Partial<Record<Stage, StageHandler>> = {
+  ...MEDIA_HANDLERS,
+  vision: visionStage,
+  classify: classifyStage,
 };

@@ -4,7 +4,7 @@ import { DEFAULT_RATES } from '@content-lab/core';
 import { createAIProviders } from '@content-lab/core/ai';
 import { apifyResolver } from './resolve';
 import type { RunnerDeps } from './runner';
-import { MEDIA_HANDLERS } from './stages';
+import { ALL_HANDLERS } from './stages';
 import { supabaseStore } from './store';
 
 type Env = Record<string, string | undefined>;
@@ -30,8 +30,8 @@ export function buildDeps(env: Env): RunnerDeps {
   return {
     store,
     resolver,
-    ai: createAIProviders(env),
-    handlers: { ...MEDIA_HANDLERS },
+    ai: createAIProviders(env, ['transcriber', 'vision', 'classifier'] as const),
+    handlers: ALL_HANDLERS,
     tmpRoot: join(tmpdir(), 'content-lab'),
     rates: DEFAULT_RATES,
   };
