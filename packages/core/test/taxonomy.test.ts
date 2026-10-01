@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyCorrections,
   ClassificationRecord,
   Evidence,
   FILTER_DIMENSIONS,
@@ -25,6 +26,7 @@ export const emptyRecord = (): ClassificationRecord => ({
   language: null,
   cta: { channel: null, wording: null, first_s: null, repeated: null },
   talent: { gender: null, age_bracket: null, people_count: null, face_first_frame: null },
+  script: [],
 });
 
 describe('taxonomy', () => {
@@ -86,6 +88,13 @@ describe('taxonomy', () => {
 
   it('allows an optional written note per field', () => {
     expect(Evidence.safeParse({ hook_type: { origin: 'jev', confidence: 0.8, note: 'Price in first frame' } }).success).toBe(true);
+  });
+
+  it('applies human corrections to single-choice labels only', () => {
+    const corrected = applyCorrections({ ...emptyRecord(), format: 'haul' }, { format: 'skit', levers: ['discount'], hook_type: 'not_a_label' });
+    expect(corrected.format).toBe('skit');
+    expect(corrected.levers).toEqual([]);
+    expect(corrected.hook_type).toBeNull();
   });
 
   it('formats labels for display', () => {

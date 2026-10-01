@@ -125,6 +125,16 @@ export const AGE_BRACKET = {
 
 export const ASPECT_RATIOS = ['9:16', '4:5', '1:1', '16:9', 'other'] as const;
 
+// Role of each transcript passage, for highlighting in the item view.
+export const SCRIPT_ROLE = {
+  hook: 'Grabs attention in the opening',
+  setup: 'Gives context or names the problem',
+  demo: 'Shows or explains the product or app in use',
+  offer: 'States the price, discount, delivery or other offer',
+  cta: 'Asks the viewer to act: buy, download, visit, follow',
+  other: 'Transition or speech with no clear role',
+} as const satisfies Described<string>;
+
 export const Objective = z.enum(keys(OBJECTIVE));
 export const HookType = z.enum(keys(HOOK_TYPE));
 export const HookChannel = z.enum(keys(HOOK_CHANNEL));
@@ -138,6 +148,7 @@ export const CtaChannel = z.enum(keys(CTA_CHANNEL));
 export const Gender = z.enum(keys(GENDER));
 export const AgeBracket = z.enum(keys(AGE_BRACKET));
 export const AspectRatio = z.enum(ASPECT_RATIOS);
+export const ScriptRole = z.enum(keys(SCRIPT_ROLE));
 export type AspectRatio = z.infer<typeof AspectRatio>;
 
 const seconds = z.number().nonnegative().nullable();
@@ -182,6 +193,13 @@ export const ClassificationRecord = z.object({
     people_count: count,
     face_first_frame: z.boolean().nullable(),
   }),
+  // Transcript passages with their role; empty when there is no speech.
+  script: z.array(z.object({
+    start: z.number().nullable(),
+    end: z.number().nullable(),
+    text: z.string(),
+    role: ScriptRole.nullable(),
+  })),
 });
 export type ClassificationRecord = z.infer<typeof ClassificationRecord>;
 
@@ -224,6 +242,18 @@ export const LIST_DIMENSIONS = {
   social_proof: { title: 'Social proof', options: SOCIAL_PROOF },
 } as const;
 export type ListDimension = keyof typeof LIST_DIMENSIONS;
+
+// Human corrections override single-choice labels without touching model output.
+export function applyCorrections(record: ClassificationRecord, corrections: unknown): ClassificationRecord {
+  if (!corrections || typeof corrections !== 'object' || Array.isArray(corrections)) return record;
+  const out = { ...record } as Record<string, unknown>;
+  for (const [field, value] of Object.entries(corrections as Record<string, unknown>)) {
+    if (!(field in FILTER_DIMENSIONS)) continue;
+    const options = FILTER_DIMENSIONS[field as FilterDimension].options as Record<string, string>;
+    if (value === null || (typeof value === 'string' && Object.hasOwn(options, value))) out[field] = value;
+  }
+  return out as ClassificationRecord;
+}
 
 export function labelText(value: string | null | undefined): string {
   if (value === null || value === undefined) return 'Unknown';

@@ -4,6 +4,7 @@ import {
   assembleRecord,
   buildQuestions,
   buildState,
+  passageQuestions,
   joinOnScreenText,
   keyframeSeconds,
   PROMPT_VERSION,
@@ -252,7 +253,7 @@ export const classifyStage: StageHandler = async (ctx) => {
     segments,
     frames,
   });
-  const { answers, inputTokens } = await classifier.answer(state, buildQuestions());
+  const { answers, inputTokens } = await classifier.answer(state, { ...buildQuestions(), ...passageQuestions(segments) });
   const { record, evidence, confidence, needsReview } = assembleRecord({
     answers,
     frames,

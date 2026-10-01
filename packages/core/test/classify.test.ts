@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assembleRecord, buildQuestions, buildState } from '../src/classify';
+import { assembleRecord, buildQuestions, buildState, passageQuestions, scriptPassages } from '../src/classify';
 import { COMMERCIAL_LEVER, SOCIAL_PROOF } from '../src/taxonomy';
 import { answersFor, frame } from './fixtures';
 
@@ -102,5 +102,26 @@ describe('assembleRecord', () => {
     expect(record.execution.music).toBe(true);
     expect(record.execution.voiceover).toBe(false);
     expect(evidence['execution.voiceover']?.origin).toBe('audio');
+  });
+});
+
+describe('script passages', () => {
+  const segments = Array.from({ length: 45 }, (_, i) => ({ start: i, end: i + 1, text: `part ${i}` }));
+
+  it('merges segments into at most 20 passages without dropping speech', () => {
+    const passages = scriptPassages(segments);
+    expect(passages.length).toBeLessThanOrEqual(20);
+    expect(passages.map((p) => p.text).join(' ')).toBe(segments.map((s) => s.text).join(' '));
+    expect(passages[0]).toMatchObject({ start: 0 });
+  });
+
+  it('asks one role question per passage and maps answers back', () => {
+    const short = [{ start: 0, end: 2, text: 'Wach baghi tchri?' }, { start: 2, end: 5, text: '-50% ghir lyoum' }, { start: 5, end: 7, text: 'Commandez daba' }];
+    const questions = passageQuestions(short);
+    expect(Object.keys(questions)).toEqual(['role_p0', 'role_p1', 'role_p2']);
+    const answers = { ...answersFor({ objective: 'purchase', hook_type: 'question', format: 'talking_head' }), role_p0: { choice: 'hook', confidence: 0.9, probabilities: {} }, role_p1: { choice: 'offer', confidence: 0.9, probabilities: {} }, role_p2: { choice: 'unclear', confidence: 0.4, probabilities: {} } };
+    const { record } = assembleRecord({ frames, durationS: 7, sceneCuts: [], width: 720, height: 1280, audioType: 'speech', segments: short, music: null, answers });
+    expect(record.script.map((p) => p.role)).toEqual(['hook', 'offer', null]);
+    expect(passageQuestions([])).toEqual({});
   });
 });

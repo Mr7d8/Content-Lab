@@ -14,6 +14,7 @@ import {
   LANGUAGE,
   lowestConfidence,
   OBJECTIVE,
+  SCRIPT_ROLE,
   SOCIAL_PROOF,
   STRUCTURE,
 } from './taxonomy';
@@ -59,6 +60,30 @@ export function buildQuestions(): Record<string, ChoiceQuestion> {
   return questions;
 }
 
+type Segment = { start: number | null; end: number | null; text: string };
+const MAX_PASSAGES = 20;
+
+// Adjacent Whisper segments merged into at most 20 passages, so the question
+// count stays bounded without dropping any speech.
+export function scriptPassages(segments: Segment[]): Segment[] {
+  const usable = segments.filter((s) => s.text.trim());
+  const stride = Math.max(1, Math.ceil(usable.length / MAX_PASSAGES));
+  const out: Segment[] = [];
+  for (let i = 0; i < usable.length; i += stride) {
+    const group = usable.slice(i, i + stride);
+    out.push({ start: group[0]?.start ?? null, end: group.at(-1)?.end ?? null, text: group.map((g) => g.text.trim()).join(' ') });
+  }
+  return out;
+}
+
+// One role question per passage, asked in the same Jev request.
+export function passageQuestions(segments: Segment[]): Record<string, ChoiceQuestion> {
+  return Object.fromEntries(scriptPassages(segments).map((_, i) => [
+    `role_p${i}`,
+    choice(`What is the role of passage p${i} in the ad script? Use the whole transcript for context but label only passage p${i}.`, SCRIPT_ROLE),
+  ]));
+}
+
 export type ClassifyInput = {
   source: string;
   advertiser: string | null;
@@ -102,6 +127,7 @@ export function buildState(input: ClassifyInput): ClassifierState {
     opening: `${openingFrames}\nSpeech before ${OPENING_SECONDS}s: ${openingSpeech || '[none]'}`,
     transcript,
     frames: input.frames.map((f, i) => ({ id: `f${i}`, second: f.second, text: frameText(f) })),
+    passages: scriptPassages(input.segments).map((p, i) => ({ id: `p${i}`, second: p.start ?? 0, text: p.text })),
   };
   // Jev reads at most about 32k tokens, questions included. Ads are short, so
   // an oversized state is an error rather than something to cut silently.
@@ -198,6 +224,11 @@ export function assembleRecord(input: AssembleInput): { record: ClassificationRe
       people_count: frames.length ? Math.max(...frames.map((f) => f.elements.people)) : null,
       face_first_frame: frames[0] ? frames[0].elements.faces > 0 : null,
     },
+    script: scriptPassages(input.segments).map((passage, i) => {
+      const a = input.answers[`role_p${i}`];
+      const role = a && a.choice !== 'unclear' ? (a.choice as keyof typeof SCRIPT_ROLE) : null;
+      return { ...passage, role };
+    }),
   };
   evidence['execution.duration_s'] = { origin: 'ffmpeg', confidence: null };
   evidence['execution.cut_count'] = { origin: 'ffmpeg', confidence: null };
