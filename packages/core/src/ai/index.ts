@@ -28,7 +28,7 @@ type Capability = keyof AIProviders;
 
 function required(env: AIEnv, name: string, purpose: string): string {
   const value = env[name];
-  if (!value) throw new Error(`Missing ${name} (needed for ${purpose}). Run pnpm doctor to check every key.`);
+  if (!value) throw new Error(`Missing ${name} (needed for ${purpose}). Run pnpm run doctor to check every key.`);
   return value;
 }
 

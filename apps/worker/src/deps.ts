@@ -11,7 +11,7 @@ type Env = Record<string, string | undefined>;
 
 function required(env: Env, name: string): string {
   const value = env[name];
-  if (!value) throw new Error(`Missing ${name}. Run pnpm doctor to check every key.`);
+  if (!value) throw new Error(`Missing ${name}. Run pnpm run doctor to check every key.`);
   return value;
 }
 

@@ -1,6 +1,6 @@
 # Phase 1 proposal: repo structure and schema
 
-Status: **approved** (Oct 1, 2026). Building in the order of section 5, one commit per step.
+Status: **built** (Oct 1, 2026), one commit per step of section 5. Setup and known limits: [SETUP.md](SETUP.md).
 
 Scope: TikTok only, free tiers first, classification by a vision pass plus TypeSafe Jev. See [the build plan](build-plan.md).
 

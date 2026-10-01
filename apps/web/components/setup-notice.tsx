@@ -7,7 +7,7 @@ export function SetupNotice() {
         <p className="mt-2 text-sm text-sub">
           Add <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> to{' '}
           <code>apps/web/.env.local</code> (or the Vercel project settings), then reload. Run{' '}
-          <code>pnpm doctor</code> to check every key.
+          <code>pnpm run doctor</code> to check every key.
         </p>
       </div>
     </main>

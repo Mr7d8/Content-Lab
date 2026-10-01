@@ -11,7 +11,7 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
-    "doctor": "node --env-file-if-exists=.env scripts/doctor.mjs",
+    "doctor": "node scripts/doctor.mjs",
     "worker:dev": "pnpm --filter @content-lab/worker dev",
     "db:check": "bash scripts/db-check.sh",
     "db:types": "node scripts/gen-db-types.mjs"
