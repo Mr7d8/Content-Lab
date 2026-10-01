@@ -1,0 +1,25 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies and builds
+node_modules/
+.next/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
+
+# Worker scratch media (raw videos are never kept)
+tmp/
+*.mp4
+*.mov
+
+# OS and editors
+.DS_Store
+.vscode/
+.idea/
