@@ -51,7 +51,11 @@ pnpm run doctor --online   # also checks each key against its provider (free cal
 The worker is an Apify actor in `apps/worker`. Its `.actor/actor.json` builds from the repository root so the shared `packages/core` is included.
 
 1. Install the CLI and log in: `npm i -g apify-cli`, then `apify login`.
-2. From `apps/worker`, run `apify push`. Alternatively, in the Apify console create an actor from this Git repository with the folder set to `apps/worker`.
+2. From `apps/worker`, run `apify push`. Alternatively, in the Apify console create an actor with the source type **Git repository** and this Git URL (branch and folder go after `#`, not as a GitHub `tree/` link):
+
+   ```
+   https://github.com/Mr7d8/Content-Lab.git#main:apps/worker
+   ```
 3. In the actor's settings, add environment variables (mark keys as secret): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `TYPESAFE_API_KEY`, and optionally `GEMINI_MODEL`, `JEV_MODEL`, `VISION_PROVIDER`, `APIFY_CREATIVE_CENTER_ACTOR_ID`, `GROQ_REQUESTS_PER_MINUTE`, `GEMINI_REQUESTS_PER_MINUTE`. Apify injects `APIFY_TOKEN` itself.
 4. Put the actor id (for example `yourname~content-lab-worker`) in the dashboard's `APIFY_WORKER_ACTOR_ID`.
 
