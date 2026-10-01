@@ -1,0 +1,23 @@
+{
+  "name": "@content-lab/worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx --env-file-if-exists=../../.env src/dev.ts",
+    "build": "node build.mjs",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@content-lab/core": "workspace:*",
+    "@supabase/supabase-js": "^2.117.2",
+    "apify": "^3.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3"
+  }
+}

@@ -1,0 +1,27 @@
+# Supabase CLI config for local development (supabase start).
+# The hosted project (Free plan) is configured in the dashboard.
+project_id = "content-lab"
+
+[api]
+port = 54321
+schemas = ["public"]
+
+[db]
+port = 54322
+major_version = 17
+
+[auth]
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+# Anyone can request a magic link; data access is limited by team_members.
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
+[storage]
+file_size_limit = "512KiB"
+
+[realtime]
+enabled = true
