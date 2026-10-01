@@ -1,3 +1,7 @@
+// A new actor's default timeout (300 s) is too short for a run. One hour
+// caps a stuck run at about one compute unit.
+const RUN_OPTIONS = 'memory=1024&timeout=3600';
+
 // Starts the worker actor for a run. The actor reads the run from Supabase,
 // so its only input is the run id.
 export async function startWorkerActor(
@@ -7,7 +11,7 @@ export async function startWorkerActor(
 ): Promise<{ ok: true; workerRunId: string } | { ok: false; message: string }> {
   const actor = encodeURIComponent(env.workerActorId);
   try {
-    const res = await fetchImpl(`https://api.apify.com/v2/acts/${actor}/runs?memory=1024`, {
+    const res = await fetchImpl(`https://api.apify.com/v2/acts/${actor}/runs?${RUN_OPTIONS}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${env.token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ runId }),

@@ -46,7 +46,7 @@ describe('startWorkerActor', () => {
     const result = await startWorkerActor('abc', env, fetchImpl as unknown as typeof fetch);
     expect(result).toEqual({ ok: true, workerRunId: 'run123' });
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe('https://api.apify.com/v2/acts/me~content-lab-worker/runs?memory=1024');
+    expect(url).toBe('https://api.apify.com/v2/acts/me~content-lab-worker/runs?memory=1024&timeout=3600');
     expect(JSON.parse(String(init.body))).toEqual({ runId: 'abc' });
   });
 
