@@ -6,17 +6,20 @@ import type { ScanState } from '@/lib/board';
 
 export type ScanView = {
   phase: 'idle' | 'starting' | 'running' | 'completed' | 'failed';
+  // The scraper's rows read so far, out of requested (0 until the run says).
   synced: number;
+  requested: number;
   error: string | null;
 };
 
 const POLL_MS = 2500;
 
 function initialView(scan: ScanState | null): ScanView {
-  if (!scan) return { phase: 'idle', synced: 0, error: null };
-  if (scan.status === 'running') return { phase: 'running', synced: scan.synced, error: null };
-  if (scan.status === 'failed') return { phase: 'failed', synced: scan.synced, error: scan.error };
-  return { phase: 'completed', synced: scan.synced, error: null };
+  if (!scan) return { phase: 'idle', synced: 0, requested: 0, error: null };
+  const counts = { synced: scan.synced, requested: scan.requested };
+  if (scan.status === 'running') return { phase: 'running', ...counts, error: null };
+  if (scan.status === 'failed') return { phase: 'failed', ...counts, error: scan.error };
+  return { phase: 'completed', ...counts, error: null };
 }
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -37,18 +40,18 @@ export function useScan(boardId: string, scan: ScanState | null) {
     while (loop.current === me) {
       try {
         const res = await fetch(`/api/scans/${runId}/sync`, { method: 'POST' });
-        const body = (await res.json()) as { ok: boolean; message?: string; status?: string; synced?: number; added?: number; done?: boolean; error?: string | null };
+        const body = (await res.json()) as { ok: boolean; message?: string; status?: string; synced?: number; requested?: number; added?: number; done?: boolean; error?: string | null };
         if (loop.current !== me) return;
         if (!body.ok) throw new Error(body.message ?? 'Sync failed');
         misses = 0;
         if (body.added) router.refresh();
         if (body.done) {
-          setView({ phase: body.status === 'failed' ? 'failed' : 'completed', synced: body.synced ?? 0, error: body.error ?? null });
+          setView({ phase: body.status === 'failed' ? 'failed' : 'completed', synced: body.synced ?? 0, requested: body.requested ?? 0, error: body.error ?? null });
           router.refresh();
           loop.current = null;
           return;
         }
-        setView({ phase: 'running', synced: body.synced ?? 0, error: null });
+        setView({ phase: 'running', synced: body.synced ?? 0, requested: body.requested ?? 0, error: null });
       } catch (e) {
         if (++misses >= 4) {
           setView((v) => ({ ...v, phase: 'failed', error: `Lost track of the scan: ${(e as Error).message}. Reload to try again.` }));
@@ -72,7 +75,7 @@ export function useScan(boardId: string, scan: ScanState | null) {
   }, [boardId, scan?.id]);
 
   const start = useCallback(async () => {
-    setView((v) => ({ ...v, phase: 'starting', error: null }));
+    setView((v) => ({ ...v, phase: 'starting', synced: 0, requested: 0, error: null }));
     try {
       const res = await fetch(`/api/boards/${boardId}/scan`, { method: 'POST' });
       const body = (await res.json()) as { ok: true; runId: string } | { ok: false; message: string };
@@ -80,7 +83,7 @@ export function useScan(boardId: string, scan: ScanState | null) {
         setView((v) => ({ ...v, phase: 'failed', error: body.message }));
         return;
       }
-      setView({ phase: 'running', synced: 0, error: null });
+      setView({ phase: 'running', synced: 0, requested: 0, error: null });
       router.refresh();
       void follow(body.runId);
     } catch (e) {

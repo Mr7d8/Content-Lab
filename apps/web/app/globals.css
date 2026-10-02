@@ -28,6 +28,19 @@
   --panel-bg: rgba(255, 255, 255, 0.66);
 }
 
+/* Typed, so the hero's text can fade to a new shade with the glow
+   (.glow-ink, set from lib/ambient). */
+@property --sub {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #6e6e73;
+}
+@property --faint {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #86868b;
+}
+
 @theme inline {
   --color-ink: var(--ink);
   --color-sub: var(--sub);
@@ -277,6 +290,11 @@ body {
   }
 }
 
+/* The hero's text over the glow (see glowInk) fades along with it. */
+.glow-ink {
+  transition: --sub 0.9s, --faint 0.9s;
+}
+
 @media (prefers-reduced-transparency: reduce) {
   .liquid,
   .liquid-bar,
@@ -294,6 +312,11 @@ body {
   }
   .ambient {
     display: none;
+  }
+  /* No glow, so no shade of it. */
+  .glow-ink {
+    --sub: #6e6e73 !important;
+    --faint: #86868b !important;
   }
 }
 

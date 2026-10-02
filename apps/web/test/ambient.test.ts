@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AMBIENT_PURPLE, ambientColor, rgbToHsl } from '../lib/ambient';
+import { AMBIENT_PURPLE, ambientColor, contrast, glowInk, hslToRgb, rgbToHsl } from '../lib/ambient';
 
 type Px = [number, number, number];
 const many = (px: Px, n: number): Px[] => Array.from({ length: n }, () => px);
@@ -32,5 +32,38 @@ describe('ambient color', () => {
 
   it('averages a red that sits on both sides of 0 degrees', () => {
     expect(ambientColor([...many([255, 0, 20], 4), ...many([255, 20, 0], 4)])).toBe('hsl(0 85% 72%)');
+  });
+});
+
+describe('glow ink', () => {
+  const peak = (glow: string) => {
+    const [h, s, l] = (/hsl\((\d+) (\d+)% (\d+)%\)/.exec(glow) as RegExpExecArray).slice(1).map(Number) as [number, number, number];
+    return hslToRgb(h, s / 100, l / 100).map((c) => Math.round(255 * 0.45 + c * 0.55)) as [number, number, number];
+  };
+  const rgbOf = (hsl: string) => {
+    const [h, s, l] = (/hsl\((\d+) (\d+)% (\d+)%\)/.exec(hsl) as RegExpExecArray).slice(1).map(Number) as [number, number, number];
+    return hslToRgb(h, s / 100, l / 100);
+  };
+
+  it('converts back from hue, saturation and lightness', () => {
+    expect(hslToRgb(0, 1, 0.5)).toEqual([255, 0, 0]);
+    expect(hslToRgb(240, 1, 0.5)).toEqual([0, 0, 255]);
+    expect(contrast([0, 0, 0], [255, 255, 255])).toBeCloseTo(21);
+  });
+
+  it('keeps the text readable on every glow, in the glow hue', () => {
+    for (const glow of [AMBIENT_PURPLE, 'hsl(0 85% 72%)', 'hsl(42 85% 62%)', 'hsl(120 85% 62%)', 'hsl(223 85% 72%)', 'hsl(330 85% 72%)']) {
+      const ink = glowInk(glow);
+      expect(contrast(rgbOf(ink.sub), peak(glow))).toBeGreaterThanOrEqual(6);
+      expect(contrast(rgbOf(ink.faint), peak(glow))).toBeGreaterThanOrEqual(4.5);
+      expect(ink.faint.startsWith(`hsl(${glow.slice(4).split(' ')[0]} `)).toBe(true);
+    }
+  });
+
+  it('keeps faint lighter than sub, and falls back to the plain grays', () => {
+    const lightness = (hsl: string) => Number(/ (\d+)%\)$/.exec(hsl)?.[1]);
+    const ink = glowInk(AMBIENT_PURPLE);
+    expect(lightness(ink.faint)).toBeGreaterThan(lightness(ink.sub));
+    expect(glowInk('#fff')).toEqual({ sub: '#6e6e73', faint: '#86868b' });
   });
 });

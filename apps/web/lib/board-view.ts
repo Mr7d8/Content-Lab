@@ -290,6 +290,23 @@ export function spreadPoints(
   return out;
 }
 
+// What the latest finished scan brought in: the scraper's rows against the ads
+// asked for, and the rows that did not land on the board (run for another
+// objective than the board's, or the same ad twice).
+export type ScanSummary = { found: number; requested: number; skipped: number };
+
+export function scanSummary(scan: { status: string; synced: number; requested: number; kept: number } | null): ScanSummary | null {
+  if (!scan || scan.status !== 'completed') return null;
+  return { found: scan.synced, requested: Math.max(scan.requested, scan.synced), skipped: Math.max(0, scan.synced - scan.kept) };
+}
+
+// Rows read out of the ads asked for, while a scan runs. Before the run says
+// how many it asked for, the board's setting stands in.
+export function scanProgress(synced: number, requested: number, maxItems: number): { done: number; target: number } {
+  const target = Math.max(1, requested || maxItems);
+  return { done: Math.min(synced, target), target };
+}
+
 // Splits the board into ads from the latest finished scan (and any scan
 // running since) and older ones. With no finished scan, every ad is current.
 export function splitByScan(ads: BoardAd[], cutoff: string | null): { current: BoardAd[]; older: BoardAd[] } {
