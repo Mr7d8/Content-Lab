@@ -1,4 +1,4 @@
-import { checkMarket, labelText, REGION_NAMES, scannedAd, scanVideoUrl, searchTerms, sourceLabel, termsLabel, type Breakdown, type MarketCheck, type MarketVerdict, type Tables } from '@content-lab/core';
+import { checkMarket, labelText, REGION_NAMES, scanMediaExpired, scannedAd, scanVideoUrl, searchTerms, sourceLabel, termsLabel, type Breakdown, type MarketCheck, type MarketVerdict, type Tables } from '@content-lab/core';
 import { readStoredMarket, type GateStatus } from './gate';
 
 // Everything the board shows, computed from database rows. Pure, so the
@@ -74,8 +74,8 @@ export function toBoardAd(item: ItemRow, rank: number | null, labels: ClassRow |
     caption: scanned?.caption ?? null,
     region: item.region,
     durationS: item.duration_s !== null ? Number(item.duration_s) : (scanned?.durationS ?? null),
-    // The cached copy, else the source's link, which may have expired.
-    cover: item.thumbnail_url ?? scanned?.coverUrl ?? null,
+    // The cached copy, else the source's link while it lasts.
+    cover: item.thumbnail_url ?? (scanMediaExpired(scan, now) ? null : (scanned?.coverUrl ?? null)),
     video: scanVideoUrl(scan, now),
     metrics,
     decode: { status, error: status === 'failed' ? (item.decode_error ?? 'The decode stopped before it finished') : null, at: item.decoded_at },
@@ -288,6 +288,30 @@ export function spreadPoints(
     if (!moved) break;
   }
   return out;
+}
+
+// What a board was showing, remembered per board in the browser so a reload
+// comes back to it: the selected ad, the two toggles, the format filter and
+// the picked ads. Anything unreadable falls back to the defaults.
+export type SavedView = { selected: string | null; withOlder: boolean; showLeftOut: boolean; format: string | null; picked: string[] };
+
+export function parseSavedView(raw: string | null): SavedView | null {
+  if (!raw) return null;
+  let v: unknown;
+  try {
+    v = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  return {
+    selected: typeof o.selected === 'string' ? o.selected : null,
+    withOlder: o.withOlder === true,
+    showLeftOut: o.showLeftOut === true,
+    format: typeof o.format === 'string' ? o.format : null,
+    picked: Array.isArray(o.picked) ? o.picked.filter((id): id is string => typeof id === 'string') : [],
+  };
 }
 
 // What the latest finished scan brought in: the scraper's rows against the ads

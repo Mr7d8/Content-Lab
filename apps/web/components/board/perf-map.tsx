@@ -19,6 +19,12 @@ const fmt = (axis: 'likes' | 'views' | 'ctr', v: number | undefined) => (v === u
 
 type Rect = { x0: number; y0: number; x1: number; y1: number };
 
+// Covers arrive one after another in rank order, the whole map in about
+// 1.6 s however many ads it has (a short board goes a little slower).
+const ENTRY_S = 1.6;
+const entryDelay = (i: number, n: number) => i * Math.min(0.05, ENTRY_S / Math.max(1, n));
+const EASE_OUT = [0.22, 1, 0.36, 1] as const;
+
 // Every ad as its cover, placed by its two numbers. Decoded ads wear a blue
 // ring;
 // a format filter dims the rest. Drag across the map to pick ads to decode.
@@ -220,22 +226,32 @@ export function PerfMap({
               onPointerLeave={() => setHovered((h) => (h === ad.id ? null : h))}
               onFocus={() => setHovered(ad.id)}
               onBlur={() => setHovered((h) => (h === ad.id ? null : h))}
-              initial={{ opacity: 0, scale: 0.4 }}
-              animate={{ opacity: faded ? 0.14 : 1, scale: selected ? 1.35 : 1, left: p.x - T.w / 2, top: p.y - T.h / 2 }}
-              transition={{ type: 'spring', stiffness: 260, damping: 24, delay: Math.min(i * 0.012, 0.4) }}
+              // Placed with transforms, so moves and the selection scale stay
+              // on the GPU; no delay here, so a click answers at once.
+              initial={false}
+              animate={{ x: p.x - T.w / 2, y: p.y - T.h / 2, scale: selected ? 1.35 : 1, opacity: faded ? 0.14 : 1 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 32, opacity: { duration: 0.25 } }}
               style={{ width: T.w, height: T.h, zIndex: selected ? 30 : isPicked ? 20 : done ? 10 : 1 }}
-              className={`absolute overflow-hidden rounded-[6px] bg-fill outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                selected
-                  ? 'shadow-[0_0_0_2px_#fff,0_0_0_4px_var(--accent),0_8px_20px_rgba(10,132,255,.45)]'
-                  : isPicked
-                    ? 'shadow-[0_0_0_2px_#fff,0_0_0_3.5px_var(--accent)]'
-                    : done
-                      ? 'shadow-[0_0_0_2px_var(--accent),0_3px_8px_rgba(0,0,0,.2)]'
-                      : 'shadow-[0_0_0_1.5px_#fff,0_3px_8px_rgba(0,0,0,.2)]'
-              }`}
+              className="absolute left-0 top-0 rounded-[6px] outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
-              <Cover ad={ad} className="h-full w-full" />
-              {ad.decode.status === 'running' && <span className="shimmer absolute inset-0 rounded-none opacity-80" />}
+              {/* The entry, once per cover: its targets never change, so it does not replay. */}
+              <motion.span
+                initial={{ opacity: 0, scale: 0.6, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ duration: 0.55, ease: EASE_OUT, delay: entryDelay(i, plotted.length) }}
+                className={`relative block h-full w-full overflow-hidden rounded-[6px] bg-fill ${
+                  selected
+                    ? 'shadow-[0_0_0_2px_#fff,0_0_0_4px_var(--accent),0_8px_20px_rgba(10,132,255,.45)]'
+                    : isPicked
+                      ? 'shadow-[0_0_0_2px_#fff,0_0_0_3.5px_var(--accent)]'
+                      : done
+                        ? 'shadow-[0_0_0_2px_var(--accent),0_3px_8px_rgba(0,0,0,.2)]'
+                        : 'shadow-[0_0_0_1.5px_#fff,0_3px_8px_rgba(0,0,0,.2)]'
+                }`}
+              >
+                <Cover ad={ad} className="h-full w-full" />
+                {ad.decode.status === 'running' && <span className="shimmer absolute inset-0 rounded-none opacity-80" />}
+              </motion.span>
             </motion.button>
           );
         })}

@@ -182,12 +182,16 @@ export function scannedAd(source: string, raw: Raw): ScannedAd | null {
   return null;
 }
 
-// The playable video in a scan row, if its link has not expired. Creative
-// Center links last about 6 hours (mediaExpiresAt).
+// Whether a scan row's video and cover links have expired. Creative Center
+// links last about 6 hours (mediaExpiresAt).
+export function scanMediaExpired(scan: Raw | null, now: Date = new Date()): boolean {
+  const expires = str(scan?.mediaExpiresAt);
+  return !!expires && Date.parse(expires) <= now.getTime() + 60_000;
+}
+
+// The playable video in a scan row, if its link has not expired.
 export function scanVideoUrl(scan: Raw | null, now: Date = new Date()): string | null {
-  if (!scan) return null;
-  const expires = str(scan.mediaExpiresAt);
-  if (expires && Date.parse(expires) <= now.getTime() + 60_000) return null;
+  if (!scan || scanMediaExpired(scan, now)) return null;
   const urls = obj(scan.videoUrls);
   return str(urls['540p']) ?? str(urls['480p']) ?? str(urls['720p']) ?? str(urls['360p']) ?? str(scan.videoUrl);
 }

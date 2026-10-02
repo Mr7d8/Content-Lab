@@ -11,6 +11,7 @@ import {
   groupAds,
   lengthBucket,
   marketCounts,
+  parseSavedView,
   rankAds,
   scanProgress,
   scanSummary,
@@ -52,6 +53,13 @@ describe('toBoardAd', () => {
     expect(a).toMatchObject({ rank: 2, advertiser: 'Noon', caption: 'Big sale', durationS: 28.3, cover: 'https://cdn/c.jpg', metrics: { ctr: 0.94, likes: 3973, costIndex: 1 } });
     expect(a.decode.status).toBe('none');
     expect(toBoardAd(item({ thumbnail_url: 'https://supa/covers/i1.jpg' }), 1, null, null, NOW).cover).toBe('https://supa/covers/i1.jpg');
+  });
+
+  it('has no cover once the source link expired and no copy was saved', () => {
+    const expired = { mediaExpiresAt: '2026-10-02T06:00:00Z' };
+    expect(toBoardAd(item({}, expired), 1, null, null, NOW).cover).toBeNull();
+    expect(toBoardAd(item({ thumbnail_url: 'https://supa/covers/i1.jpg' }, expired), 1, null, null, NOW).cover).toBe('https://supa/covers/i1.jpg');
+    expect(toBoardAd(item({}, { mediaExpiresAt: '2026-10-02T18:00:00Z' }), 1, null, null, NOW).cover).toBe('https://cdn/c.jpg');
   });
 
   it('drops the Not Mention placeholder for advertisers', () => {
@@ -229,5 +237,19 @@ describe('scanProgress', () => {
   it("uses the board's setting until the run says, and never runs past the target", () => {
     expect(scanProgress(0, 0, 100)).toEqual({ done: 0, target: 100 });
     expect(scanProgress(104, 100, 100)).toEqual({ done: 100, target: 100 });
+  });
+});
+
+describe('parseSavedView', () => {
+  it('reads what the board was showing', () => {
+    const view = { selected: 'a1', withOlder: true, showLeftOut: false, format: 'ugc_testimonial', picked: ['a1', 'a2'] };
+    expect(parseSavedView(JSON.stringify(view))).toEqual(view);
+  });
+
+  it('falls back to the defaults for anything unreadable', () => {
+    expect(parseSavedView(null)).toBeNull();
+    expect(parseSavedView('not json')).toBeNull();
+    expect(parseSavedView('[1, 2]')).toBeNull();
+    expect(parseSavedView(JSON.stringify({ selected: 3, withOlder: 'yes', picked: ['a', 4] }))).toEqual({ selected: null, withOlder: false, showLeftOut: false, format: null, picked: ['a'] });
   });
 });
