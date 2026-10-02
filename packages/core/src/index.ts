@@ -8,3 +8,4 @@ export * from './decode';
 export { DECODE_SYSTEM, decodeJsonSchema, decodeUserText, type DecodeContext } from './prompts/decode';
 export type { Database, Json, Tables, TablesInsert, TablesUpdate } from './db';
 export * from './classify';
+export * from './market';

@@ -6,9 +6,11 @@ import {
   boardEyebrow,
   boardHeadline,
   boardStats,
+  byMarket,
   formatCount,
   groupAds,
   lengthBucket,
+  marketCounts,
   rankAds,
   splitByScan,
   spreadPoints,
@@ -34,6 +36,7 @@ function ad(id: string, over: Partial<BoardAd> = {}): BoardAd {
   return {
     id, source: 'tiktok_creative_center', externalId: id, sourceUrl: '', rank: null, advertiser: null, handle: null, caption: null, region: null,
     durationS: null, cover: null, video: null, metrics: {}, decode: { status: 'none', error: null, at: null }, labels: null, breakdown: null, transcript: null,
+    market: { verdict: 'unclear', elsewhere: null, reasons: [] },
     ...over,
   };
 }
@@ -77,6 +80,28 @@ describe('toBoardAd', () => {
     expect(a.labels).toEqual({ format: 'demo', hookType: 'question', structure: 'problem_solution', objective: 'purchase', language: 'ar' });
     expect(a.breakdown?.summary).toBe('S');
     expect(a.transcript).toBe('T');
+  });
+
+  it('checks the market from the ad text, then from what the decode read and heard', () => {
+    expect(toBoardAd(item({}, { adText: 'طلب ديالك دابا' }), 1, null, null, NOW).market.verdict).toBe('moroccan');
+    expect(toBoardAd(item({}, { adText: 'عروض اليوم الوطني ب 96 ريال' }), 1, null, null, NOW).market).toMatchObject({ verdict: 'elsewhere', elsewhere: 'Gulf' });
+    const plain = item({ decode_status: 'done' }, { adText: 'New collection' });
+    expect(toBoardAd(plain, 1, null, null, NOW).market.verdict).toBe('unclear');
+    const decodedAd = toBoardAd(plain, 1, null, { item_id: 'i1', breakdown_json: null, transcript: null, ocr_text: 'Livraison gratuite\n199 DH', transcript_lang: null }, NOW);
+    expect(decodedAd.market).toMatchObject({ verdict: 'moroccan', reasons: [{ label: 'Price in dirhams', examples: [] }] });
+    const spoken = toBoardAd(plain, 1, { item_id: 'i1', labels_json: { language: 'darija' }, created_at: '' }, null, NOW);
+    expect(spoken.market.reasons.map((r) => r.label)).toEqual(['Spoken in Darija']);
+  });
+});
+
+describe('market filter', () => {
+  const m = (id: string, verdict: 'moroccan' | 'unclear' | 'elsewhere') => ad(id, { market: { verdict, elsewhere: null, reasons: [] } });
+  const ads = [m('a', 'moroccan'), m('b', 'elsewhere'), m('c', 'unclear'), m('d', 'moroccan')];
+
+  it('counts and filters ads by market', () => {
+    expect(marketCounts(ads)).toEqual({ all: 4, moroccan: 2, unclear: 1, elsewhere: 1 });
+    expect(byMarket(ads, 'moroccan').map((a) => a.id)).toEqual(['a', 'd']);
+    expect(byMarket(ads, 'all')).toHaveLength(4);
   });
 });
 

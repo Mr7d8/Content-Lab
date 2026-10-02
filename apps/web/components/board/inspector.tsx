@@ -8,6 +8,7 @@ import { BEAT_COLORS } from '@/lib/colors';
 import { clock } from '@/lib/frame-view';
 import { Cover } from './cover';
 import { Glow, ProgressiveBlur } from './glass';
+import { MarketNote } from './market';
 
 const Sparkle = ({ size = 14 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 14 14" aria-hidden><path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7 5.6 5.6Z" fill="currentColor" /></svg>
@@ -307,6 +308,7 @@ export function Inspector({
           <MediaCard ad={ad} rank={rank} total={total} source={source} video={video} onDecode={() => onDecode(ad.id)} />
 
           <div className="panel p-4">
+            <MarketNote market={ad.market} decoded={ad.decode.status === 'done'} />
             {ad.decode.status === 'none' && (
               <div className="space-y-1.5">
                 <p className="mono text-faint">Not decoded yet</p>

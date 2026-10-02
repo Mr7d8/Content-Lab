@@ -2,14 +2,15 @@
 
 import { DECODE_ESTIMATE_USD } from '@content-lab/core';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BoardData } from '@/lib/board';
-import { boardHeadline, boardStats, groupAds, rankAds, splitByScan, type BoardAd } from '@/lib/board-view';
+import { boardHeadline, boardStats, byMarket, groupAds, marketCounts, rankAds, splitByScan, type BoardAd, type MarketFilter as Market } from '@/lib/board-view';
 import { DeepDive } from './deep-dive';
 import { Ambient } from './glass';
 import { Hero } from './hero';
 import { Inspector } from './inspector';
 import { Kpis } from './kpis';
+import { MarketFilter } from './market';
 import { NewBoardDialog } from './new-board';
 import { PerfMap } from './perf-map';
 import { TopAds } from './top-ads';
@@ -34,6 +35,31 @@ function withQueue(ad: BoardAd, q: Queue): BoardAd {
 
 const undecoded = (ad: BoardAd) => ad.decode.status === 'none' || ad.decode.status === 'failed';
 
+const MARKET_KEY = 'content-lab:market';
+const MARKETS: readonly Market[] = ['all', 'moroccan', 'unclear', 'elsewhere'];
+
+// The market filter, remembered in this browser across boards and visits.
+function useMarketFilter(): [Market, (m: Market) => void] {
+  const [market, setMarket] = useState<Market>('all');
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(MARKET_KEY) as Market | null;
+      if (saved && MARKETS.includes(saved)) setMarket(saved);
+    } catch {
+      // Storage can be blocked; the filter then starts at All.
+    }
+  }, []);
+  const choose = useCallback((m: Market) => {
+    setMarket(m);
+    try {
+      window.localStorage.setItem(MARKET_KEY, m);
+    } catch {
+      // Not remembered, still applied.
+    }
+  }, []);
+  return [market, choose];
+}
+
 export function Board({ data }: { data: BoardData }) {
   const { board } = data;
   const source = board.source;
@@ -44,7 +70,12 @@ export function Board({ data }: { data: BoardData }) {
   // The latest scan by default; ads from earlier scans on request.
   const [withOlder, setWithOlder] = useState(false);
   const { current, older } = useMemo(() => splitByScan(data.ads, data.cutoff), [data.ads, data.cutoff]);
-  const shown = withOlder ? data.ads : current;
+  const scoped = withOlder ? data.ads : current;
+  const [marketChoice, setMarket] = useMarketFilter();
+  const counts = useMemo(() => marketCounts(scoped), [scoped]);
+  // A filter with no ads in this board shows them all instead of nothing.
+  const market = counts[marketChoice] ? marketChoice : 'all';
+  const shown = useMemo(() => byMarket(scoped, market), [scoped, market]);
   const ads = useMemo(() => rankAds(shown.map((a) => withQueue(a, { active, errors, finished })), source), [shown, active, errors, finished, source]);
   const stats = boardStats(ads, source);
   const formats = useMemo(() => groupAds(ads, source, 'format'), [ads, source]);
@@ -86,7 +117,7 @@ export function Board({ data }: { data: BoardData }) {
         <Hero
           board={board}
           headline={boardHeadline(ads, source)}
-          count={ads.length}
+          count={counts.all}
           scan={scan}
           onScan={startScan}
           toDecode={topIds.length}
@@ -94,6 +125,7 @@ export function Board({ data }: { data: BoardData }) {
           top={ads.slice(0, 3)}
           onSelect={select}
         />
+        <MarketFilter value={market} counts={counts} onChange={setMarket} />
         <Kpis stats={stats} source={source} decoding={queue.active.size} cover={ads[0]?.cover ?? null} />
 
         <section className="mt-12" aria-labelledby="overview-title">
