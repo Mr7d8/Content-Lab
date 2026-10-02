@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState } from 'react';
+import { ambientColors, DEFAULT_AMBIENT } from '@/lib/ambient';
 
 // A photo that melts into frosted glass toward the bottom: blur layers of
 // growing strength, each masked to a lower band.
@@ -44,8 +45,9 @@ export function Glow({ src, className = '' }: { src: string | null; className?: 
 
 const palettes = new Map<string, string[] | null>();
 
-// Six colors from a 3 by 2 grid of the image, read once from a tiny canvas.
-// Null when the image cannot be read (no CORS), so the page stays neutral.
+// Six colors from a 3 by 2 grid of the image, read once from a tiny canvas
+// and made vivid (see lib/ambient). Null when the image cannot be read (no
+// CORS); the page then shows the default neon light.
 function usePalette(src: string | null): string[] | null {
   const [colors, setColors] = useState<string[] | null>(() => (src ? palettes.get(src) ?? null : null));
   useEffect(() => {
@@ -64,8 +66,7 @@ function usePalette(src: string | null): string[] | null {
         if (!ctx) throw new Error('no canvas');
         ctx.drawImage(img, 0, 0, 3, 2);
         const d = ctx.getImageData(0, 0, 3, 2).data;
-        const out: string[] = [];
-        for (let i = 0; i < 6; i++) out.push(`rgb(${d[i * 4]} ${d[i * 4 + 1]} ${d[i * 4 + 2]})`);
+        const out = ambientColors(Array.from({ length: 6 }, (_, i) => [d[i * 4] ?? 0, d[i * 4 + 1] ?? 0, d[i * 4 + 2] ?? 0] as [number, number, number]));
         palettes.set(src, out);
         if (live) setColors(out);
       } catch {
@@ -87,27 +88,26 @@ function usePalette(src: string | null): string[] | null {
 
 const SPOTS = ['12% 8%', '50% 0%', '88% 10%', '8% 70%', '55% 60%', '95% 75%'];
 
-// The page's ambient color: soft light in the selected ad's colors behind the
-// glass. Painted gradients, no live blur, so scrolling stays smooth.
+// The page's ambient color: soft neon light in the selected ad's colors
+// behind the glass. Painted gradients, no live blur, so scrolling stays smooth.
 export function Ambient({ src }: { src: string | null }) {
-  const colors = usePalette(src);
-  const key = colors?.join() ?? 'none';
+  const colors = usePalette(src) ?? DEFAULT_AMBIENT;
+  const key = colors.join();
   return (
     <div aria-hidden className="ambient pointer-events-none fixed inset-0 z-0 overflow-hidden">
       <AnimatePresence initial={false}>
-        {colors && (
-          <motion.div
-            key={key}
-            className="absolute inset-0 opacity-50 saturate-[1.6]"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 0.5 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.9 }}
-            style={{ background: colors.map((c, i) => `radial-gradient(60% 55% at ${SPOTS[i]}, ${c}, transparent 70%)`).join(', ') }}
-          />
-        )}
+        <motion.div
+          key={key}
+          className="absolute inset-0"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.42 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.9 }}
+          style={{ background: colors.map((c, i) => `radial-gradient(60% 55% at ${SPOTS[i]}, ${c}, transparent 70%)`).join(', ') }}
+        />
       </AnimatePresence>
-      <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,rgba(245,245,247,.1),rgba(245,245,247,.7)_75%)]" />
+      {/* A soft white veil, stronger lower down, keeps the color behind the content calm. */}
+      <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,rgba(245,245,247,0),rgba(245,245,247,.55)_80%)]" />
     </div>
   );
 }
