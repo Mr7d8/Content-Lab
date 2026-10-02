@@ -257,7 +257,7 @@ export function PerfMap({
               <Glow src={hoveredAd.cover} className="inset-x-3 bottom-[-10px] top-6 h-full w-[calc(100%-24px)]" />
               <div className="relative aspect-[9/16] w-full overflow-hidden rounded-[18px] bg-fill shadow-[0_0_0_1px_rgba(255,255,255,.6)]">
                 <Cover ad={hoveredAd} className="absolute inset-0 h-full w-full" />
-                <ProgressiveBlur className="top-[50%]" steps={3} max={14} />
+                <ProgressiveBlur className="top-[55%]" steps={3} max={14} />
                 <span className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/60 to-transparent" />
                 <div className="absolute inset-x-2.5 bottom-2.5 text-white">
                   <p className="truncate text-[12.5px] font-semibold" dir="auto">{hoveredAd.advertiser ?? hoveredAd.handle ?? 'Unknown advertiser'}</p>

@@ -76,8 +76,9 @@ function MediaCard({
         ) : (
           <Cover ad={ad} className="absolute inset-0 h-full w-full" />
         )}
-        <ProgressiveBlur className="top-[40%]" steps={4} max={28} />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[64%] bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+        {/* Only the band under the name, numbers and buttons is frosted. */}
+        <ProgressiveBlur className="top-[56%]" steps={4} max={24} />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[50%] bg-gradient-to-t from-black/75 via-black/35 to-transparent" />
 
         <div className="absolute inset-x-3 top-3 flex items-start justify-between gap-2">
           <span className="liquid-dark mono rounded-full px-2.5 py-1 text-[10px] tabular-nums">#{rank} of {total}</span>

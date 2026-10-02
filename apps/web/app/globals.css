@@ -260,15 +260,18 @@ body {
 }
 
 /* Progressive blur: stacked backdrop blurs, each masked to start lower, so a
-   photo melts into frosted glass toward the bottom (see ProgressiveBlur). */
-.pblur {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.pblur > i {
-  position: absolute;
-  inset: 0;
+   photo melts into frosted glass toward the bottom (see ProgressiveBlur).
+   In the components layer, so a utility like top-[58%] can place it. */
+@layer components {
+  .pblur {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .pblur > i {
+    position: absolute;
+    inset: 0;
+  }
 }
 
 @media (prefers-reduced-transparency: reduce) {
