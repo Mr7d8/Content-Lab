@@ -5,6 +5,7 @@ import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { BoardData } from '@/lib/board';
 import { boardHeadline, boardStats, groupAds, rankAds, splitByScan, type BoardAd } from '@/lib/board-view';
+import { DeepDive } from './deep-dive';
 import { Ambient } from './glass';
 import { Hero } from './hero';
 import { Inspector } from './inspector';
@@ -54,6 +55,14 @@ export function Board({ data }: { data: BoardData }) {
   const [format, setFormat] = useState<string | null>(null);
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const inspector = useRef<HTMLDivElement>(null);
+  // The inspector's video: the frame strip under the map follows and seeks it.
+  const video = useRef<HTMLVideoElement | null>(null);
+  const seek = useCallback((s: number) => {
+    const v = video.current;
+    if (!v) return;
+    v.currentTime = s;
+    void v.play().catch(() => undefined);
+  }, []);
 
   const dimmed = useCallback((ad: BoardAd) => format !== null && ad.labels?.format !== format, [format]);
   const select = useCallback((id: string) => {
@@ -118,8 +127,12 @@ export function Board({ data }: { data: BoardData }) {
           <div className="mt-4 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[236px_minmax(0,1fr)_360px]">
             <TopAds ads={ads} source={source} selectedId={selected?.id ?? null} onSelect={select} dimmed={dimmed} />
             <PerfMap ads={ads} source={source} selectedId={selected?.id ?? null} picked={picked} onSelect={select} onPick={(ids) => setPicked(new Set(ids))} dimmed={dimmed} />
-            <div ref={inspector} className="scroll-mt-20 lg:sticky lg:top-20">
-              <Inspector ad={selected} rank={selectedIndex + 1} total={ads.length} source={source} onDecode={(id) => queue.decode([id])} />
+            <div ref={inspector} className="scroll-mt-20 lg:sticky lg:top-20 lg:row-span-2">
+              <Inspector ad={selected} rank={selectedIndex + 1} total={ads.length} source={source} video={video} onSeek={seek} onDecode={(id) => queue.decode([id])} />
+            </div>
+            {/* Frame by frame and craft: wide rows under the map, beside the inspector. */}
+            <div className="min-w-0 space-y-4 empty:hidden xl:col-span-2">
+              <DeepDive ad={selected} video={video} onSeek={seek} />
             </div>
           </div>
         </section>

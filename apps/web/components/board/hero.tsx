@@ -104,7 +104,8 @@ function ScanLine({ board, scan, count }: { board: Tables<'watchlists'>; scan: S
   }
   const last = agoText(board.last_swept_at, now);
   return (
-    <p className="mono text-faint">
+    // "3 min ago" depends on the clock, so server and browser may differ by a minute.
+    <p className="mono text-faint" suppressHydrationWarning>
       {last ? `Scanned ${last}` : 'Never scanned'} · {count} ads · {scheduleText(board, now)}
     </p>
   );

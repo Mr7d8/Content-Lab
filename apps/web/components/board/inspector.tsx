@@ -2,14 +2,12 @@
 
 import { DECODE_ESTIMATE_USD, labelText, sourceLabel, type BeatRole } from '@content-lab/core';
 import { AnimatePresence, motion } from 'motion/react';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { formatCount, type BoardAd } from '@/lib/board-view';
 import { BEAT_COLORS } from '@/lib/colors';
-import { clock, craftOf, frameRows } from '@/lib/frame-view';
+import { clock } from '@/lib/frame-view';
 import { Cover } from './cover';
-import { CraftPanel, FrameByFrame } from './frames';
 import { Glow, ProgressiveBlur } from './glass';
-import { useAdDetail } from './use-ad-detail';
 
 const Sparkle = ({ size = 14 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 14 14" aria-hidden><path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7 5.6 5.6Z" fill="currentColor" /></svg>
@@ -276,9 +274,24 @@ function Decoded({ ad, onSeek }: { ad: BoardAd; onSeek: (s: number) => void }) {
   );
 }
 
-export function Inspector({ ad, rank, total, source, onDecode }: { ad: BoardAd | null; rank: number; total: number; source: string; onDecode: (id: string) => void }) {
-  const video = useRef<HTMLVideoElement | null>(null);
-  const { detail, loading, capture } = useAdDetail(ad);
+export function Inspector({
+  ad,
+  rank,
+  total,
+  source,
+  video,
+  onSeek,
+  onDecode,
+}: {
+  ad: BoardAd | null;
+  rank: number;
+  total: number;
+  source: string;
+  // Owned by the board, so the frame strip under the map can follow and seek it.
+  video: React.RefObject<HTMLVideoElement | null>;
+  onSeek: (s: number) => void;
+  onDecode: (id: string) => void;
+}) {
   if (!ad) {
     return (
       <aside className="panel grid min-h-[300px] place-items-center p-6 text-center">
@@ -286,16 +299,6 @@ export function Inspector({ ad, rank, total, source, onDecode }: { ad: BoardAd |
       </aside>
     );
   }
-  const seek = (s: number) => {
-    const v = video.current;
-    if (!v) return;
-    v.currentTime = s;
-    void v.play().catch(() => undefined);
-  };
-  const rows = detail
-    ? frameRows(detail.frames, { segments: detail.segments, beats: ad.breakdown?.beats, durationS: ad.durationS, images: detail.images })
-    : [];
-  const craft = detail?.record ? craftOf(detail.record) : null;
 
   return (
     <aside aria-label="Inspector" className="no-scrollbar min-w-0 lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto">
@@ -330,33 +333,9 @@ export function Inspector({ ad, rank, total, source, onDecode }: { ad: BoardAd |
                 <p className="text-[13px] leading-snug text-sub">{ad.decode.error}</p>
               </div>
             )}
-            {ad.decode.status === 'done' && <Decoded ad={ad} onSeek={seek} />}
+            {ad.decode.status === 'done' && <Decoded ad={ad} onSeek={onSeek} />}
           </div>
 
-          {rows.length > 0 && (
-            <div className="panel p-4">
-              <FrameByFrame adId={ad.id} rows={rows} video={video} capture={capture} capturable={detail?.capturable ?? false} onSeek={seek} />
-            </div>
-          )}
-          {loading && ad.decode.status === 'done' && (
-            <div className="panel space-y-2.5 p-4" role="status" aria-label="Loading the frames">
-              <div className="shimmer h-3 w-1/3" />
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="grid grid-cols-[72px_minmax(0,1fr)] gap-3">
-                  <div className="shimmer aspect-[9/16]" />
-                  <div className="space-y-2 pt-1">
-                    <div className="shimmer h-3.5 w-11/12" />
-                    <div className="shimmer h-3.5 w-2/3" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {craft && (
-            <div className="panel p-4">
-              <CraftPanel craft={craft} onSeek={seek} />
-            </div>
-          )}
         </motion.div>
       </AnimatePresence>
     </aside>
