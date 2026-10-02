@@ -152,22 +152,16 @@ function CoverStack({ ads, source, onSelect }: { ads: BoardAd[]; source: string;
   );
 }
 
-export function Hero({
+// Scan, decode the top 10 and the board settings. Lives in the overview
+// header, next to the ads it acts on, so the hero stays short.
+export function BoardActions({
   board,
-  headline,
-  count,
   scan,
   onScan,
   toDecode,
   onDecodeTop,
-  top,
-  onSelect,
 }: {
-  top: BoardAd[];
-  onSelect: (id: string) => void;
   board: Tables<'watchlists'>;
-  headline: string;
-  count: number;
   scan: ScanView;
   onScan: () => void;
   toDecode: number;
@@ -175,7 +169,52 @@ export function Hero({
 }) {
   const scanning = scan.phase === 'starting' || scan.phase === 'running';
   return (
-    <section className="grid gap-6 pb-8 pt-10 sm:pt-14 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+    <div className="flex flex-wrap items-center gap-2">
+      <button type="button" className="btn-primary !px-5 !py-2.5" onClick={onScan} disabled={scanning}>
+        {scanning ? (
+          <>
+            <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-white" />
+            Scanning
+          </>
+        ) : (
+          <>
+            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden><path d="M12 7a5 5 0 1 1-1.5-3.6M12 2v2.6H9.4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            Scan now
+          </>
+        )}
+      </button>
+      <button
+        type="button"
+        className="btn-secondary !px-5 !py-2.5"
+        onClick={onDecodeTop}
+        disabled={!toDecode}
+        title={toDecode ? `The rest of the top 10, about $${(toDecode * DECODE_ESTIMATE_USD).toFixed(2)}` : 'The top 10 are decoded'}
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden><path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7 5.6 5.6Z" fill="currentColor" /></svg>
+        {toDecode === 10 ? 'Decode top 10' : toDecode ? `Decode ${toDecode} more` : 'Top 10 decoded'}
+      </button>
+      <BoardMenu board={board} />
+    </div>
+  );
+}
+
+export function Hero({
+  board,
+  headline,
+  count,
+  scan,
+  top,
+  onSelect,
+}: {
+  board: Tables<'watchlists'>;
+  headline: string;
+  count: number;
+  scan: ScanView;
+  top: BoardAd[];
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <section className="grid gap-6 pb-6 pt-5 sm:pt-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
       <div className="min-w-0">
         <p className="mono flex flex-wrap gap-x-2 gap-y-1 text-faint">
           {boardEyebrow(board).map((part, i) => (
@@ -185,45 +224,17 @@ export function Hero({
             </span>
           ))}
         </p>
-        <h1 className="mt-3 text-[38px] font-semibold leading-[1.04] tracking-[-0.035em] sm:text-[56px]" dir="auto">
+        <h1 className="mt-2.5 text-[38px] font-semibold leading-[1.04] tracking-[-0.035em] sm:text-[56px]" dir="auto">
           <span className="text-faint">Decode </span>
           {board.name}
           <span className="text-accent">.</span>
         </h1>
         <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-sub">{headline}</p>
-        <div className="mt-3">
+        <div className="mt-2.5">
           <ScanLine board={board} scan={scan} count={count} />
         </div>
       </div>
-      <div className="flex flex-col items-start gap-6 lg:items-center">
       <CoverStack ads={top} source={board.source} onSelect={onSelect} />
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn-primary !px-5 !py-2.5" onClick={onScan} disabled={scanning}>
-          {scanning ? (
-            <>
-              <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-white" />
-              Scanning
-            </>
-          ) : (
-            <>
-              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden><path d="M12 7a5 5 0 1 1-1.5-3.6M12 2v2.6H9.4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              Scan now
-            </>
-          )}
-        </button>
-        <button
-          type="button"
-          className="btn-secondary !px-5 !py-2.5"
-          onClick={onDecodeTop}
-          disabled={!toDecode}
-          title={toDecode ? `The rest of the top 10, about $${(toDecode * DECODE_ESTIMATE_USD).toFixed(2)}` : 'The top 10 are decoded'}
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden><path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7 5.6 5.6Z" fill="currentColor" /></svg>
-          {toDecode === 10 ? 'Decode top 10' : toDecode ? `Decode ${toDecode} more` : 'Top 10 decoded'}
-        </button>
-        <BoardMenu board={board} />
-      </div>
-      </div>
     </section>
   );
 }
