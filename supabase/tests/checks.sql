@@ -112,11 +112,14 @@ rollback;
 do $$ declare n int; begin
   select count(*) into n from public.watchlists;
   if n <> 9 then raise exception 'FAIL expected 9 seeded watchlists, got %', n; end if;
-  select count(*) into n from public.watchlists where type = 'advertiser' and region is null and refresh_cadence = 'weekly';
+  select count(*) into n from public.watchlists where type = 'advertiser' and region is null;
   if n <> 3 then raise exception 'FAIL global advertiser watchlists'; end if;
-  select count(*) into n from public.watchlists where type = 'industry' and region in ('MA','MENA','FR') and refresh_cadence = 'monthly';
+  select count(*) into n from public.watchlists where type = 'industry' and region in ('MA','MENA','FR');
   if n <> 6 then raise exception 'FAIL category sweeps'; end if;
   raise notice 'PASS first sweep watchlists seeded';
+  select count(*) into n from public.watchlists where refresh_cadence <> 'manual';
+  if n <> 0 then raise exception 'FAIL % boards left on a schedule', n; end if;
+  raise notice 'PASS every board scans only when asked';
   begin insert into public.watchlists (name, type, value, source, region) values ('x','advertiser','Temu','tiktok_creative_center','morocco');
     raise exception 'FAIL lowercase region accepted';
   exception when check_violation then raise notice 'PASS region code check'; end;

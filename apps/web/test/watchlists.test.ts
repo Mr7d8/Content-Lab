@@ -19,6 +19,10 @@ describe('parseWatchlistForm', () => {
     expect(parseWatchlistForm(form({ source: 'tiktok_organic', type: 'account', value: '@jumia_ma' }))).toMatchObject({ row: { value: 'jumia_ma', region: null } });
   });
 
+  it('scans only when asked unless a schedule is picked', () => {
+    expect(parseWatchlistForm(form({ source: 'tiktok_creative_center', type: 'industry', value: 'all', region: 'MA' }))).toMatchObject({ row: { refresh_cadence: 'manual' } });
+  });
+
   it('names an all-industry Creative Center board after its region and objective', () => {
     expect(parseWatchlistForm(form({ source: 'tiktok_creative_center', type: 'industry', value: 'all', region: 'MA', objective: 'purchase' }))).toMatchObject({
       row: { name: 'Top ads, Morocco', type: 'industry', value: 'all', objective: 'purchase' },
