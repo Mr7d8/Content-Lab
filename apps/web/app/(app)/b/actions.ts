@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
-import { CADENCES, parseWatchlistForm, PERIODS } from '@/lib/watchlists';
+import { boardValue, CADENCES, parseWatchlistForm, PERIODS } from '@/lib/watchlists';
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; message: string };
 
@@ -27,17 +27,30 @@ export async function createBoard(formData: FormData): Promise<ActionResult> {
   return { ok: true, id: data.id };
 }
 
-export async function updateBoard(id: string, patch: { refresh_cadence?: string; max_items?: number; period_days?: number; name?: string }): Promise<ActionResult> {
+export type BoardPatch = { refresh_cadence?: string; max_items?: number; period_days?: number; name?: string; value?: string; moroccan_only?: boolean };
+
+export async function updateBoard(id: string, patch: BoardPatch): Promise<ActionResult> {
   const supabase = await signedIn();
   if (!supabase) return { ok: false, message: 'Sign in first.' };
-  const { refresh_cadence, max_items, period_days } = patch;
+  const { refresh_cadence, max_items, period_days, moroccan_only } = patch;
   const name = patch.name?.trim().slice(0, 80);
   if (refresh_cadence !== undefined && !(CADENCES as readonly string[]).includes(refresh_cadence)) return { ok: false, message: 'Unknown schedule.' };
   if (max_items !== undefined && !(Number.isInteger(max_items) && max_items >= 1 && max_items <= 50)) return { ok: false, message: 'Ads per scan must be between 1 and 50.' };
   if (period_days !== undefined && !(PERIODS as readonly number[]).includes(period_days)) return { ok: false, message: 'Pick 7, 30 or 180 days.' };
   if (patch.name !== undefined && !name) return { ok: false, message: 'Give the board a name.' };
-  const { error } = await supabase.from('watchlists').update({ refresh_cadence, max_items, period_days, name }).eq('id', id);
+  if (moroccan_only !== undefined && typeof moroccan_only !== 'boolean') return { ok: false, message: 'Unknown Moroccan setting.' };
+  // New search terms, cleaned the same way as when the board was made.
+  let value: string | undefined;
+  if (patch.value !== undefined) {
+    const { data: board } = await supabase.from('watchlists').select('type').eq('id', id).maybeSingle();
+    if (!board) return { ok: false, message: 'Board not found.' };
+    const parsed = boardValue(board.type, patch.value);
+    if (!parsed.ok) return parsed;
+    value = parsed.value;
+  }
+  const { error } = await supabase.from('watchlists').update({ refresh_cadence, max_items, period_days, name, value, moroccan_only }).eq('id', id);
   revalidatePath('/b', 'layout');
+  if (error?.code === '23505') return { ok: false, message: 'Another board already has this search.' };
   return error ? { ok: false, message: error.message } : { ok: true };
 }
 

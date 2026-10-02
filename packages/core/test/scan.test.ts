@@ -29,6 +29,24 @@ describe('scan inputs', () => {
     });
   });
 
+  it('sends every term of a multi-term board, and shares organic results across them', () => {
+    expect(creativeCenterScanInput({ ...board, type: 'keyword', value: 'maroc, الدفع عند الاستلام، livraison gratuite, Maroc' })).toMatchObject({
+      keywords: ['maroc', 'الدفع عند الاستلام', 'livraison gratuite'],
+    });
+    expect(organicScanInput({ ...board, source: 'tiktok_organic', type: 'keyword', value: 'unboxing maroc, شريت من, عروض المغرب', max_items: 30 })).toMatchObject({
+      searchQueries: ['unboxing maroc', 'شريت من', 'عروض المغرب'], resultsPerPage: 10, searchSection: '/video',
+    });
+    expect(organicScanInput({ ...board, source: 'tiktok_organic', type: 'account', value: '@jumia_ma, @marjane', max_items: 25 })).toMatchObject({
+      profiles: ['jumia_ma', 'marjane'], resultsPerPage: 13,
+    });
+  });
+
+  it('follows the Moroccan advertisers on snowball boards', () => {
+    const snowball = { ...board, type: 'snowball', value: 'auto', objective: null };
+    expect(creativeCenterScanInput(snowball, { followed: ['Modines', 'Ecomarts'] })).toMatchObject({ keywords: ['Modines', 'Ecomarts'], regions: ['MA'] });
+    expect(() => creativeCenterScanInput(snowball, { followed: [] })).toThrow(/No Moroccan advertisers yet/);
+  });
+
   it('estimates the scan cost per result', () => {
     expect(estimateScan(30)).toBeCloseTo(0.095);
   });

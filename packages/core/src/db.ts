@@ -5,6 +5,44 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type Database = {
   public: {
     Tables: {
+      advertisers: {
+        Row: {
+          key: string;
+          name: string;
+          status: string;
+          origin: string;
+          item_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          key: string;
+          name: string;
+          status: string;
+          origin: string;
+          item_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          key?: string;
+          name?: string;
+          status?: string;
+          origin?: string;
+          item_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'advertisers_item_id_fkey';
+            columns: ['item_id'];
+            isOneToOne: false;
+            referencedRelation: 'items';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       app_settings: {
         Row: {
           id: boolean;
@@ -36,6 +74,7 @@ export type Database = {
           rank: number | null;
           added_at: string;
           last_seen_at: string;
+          status: string;
         };
         Insert: {
           watchlist_id: string;
@@ -43,6 +82,7 @@ export type Database = {
           rank?: number | null;
           added_at?: string;
           last_seen_at?: string;
+          status?: string;
         };
         Update: {
           watchlist_id?: string;
@@ -50,6 +90,7 @@ export type Database = {
           rank?: number | null;
           added_at?: string;
           last_seen_at?: string;
+          status?: string;
         };
         Relationships: [
           {
@@ -203,6 +244,7 @@ export type Database = {
           decode_cost_usd: number;
           scan_json: Json | null;
           scanned_at: string | null;
+          market_json: Json | null;
         };
         Insert: {
           id?: string;
@@ -225,6 +267,7 @@ export type Database = {
           decode_cost_usd?: number;
           scan_json?: Json | null;
           scanned_at?: string | null;
+          market_json?: Json | null;
         };
         Update: {
           id?: string;
@@ -247,6 +290,7 @@ export type Database = {
           decode_cost_usd?: number;
           scan_json?: Json | null;
           scanned_at?: string | null;
+          market_json?: Json | null;
         };
         Relationships: [];
       };
@@ -620,6 +664,7 @@ export type Database = {
           max_items: number;
           last_swept_at: string | null;
           period_days: number;
+          moroccan_only: boolean;
         };
         Insert: {
           id?: string;
@@ -637,6 +682,7 @@ export type Database = {
           max_items?: number;
           last_swept_at?: string | null;
           period_days?: number;
+          moroccan_only?: boolean;
         };
         Update: {
           id?: string;
@@ -654,6 +700,7 @@ export type Database = {
           max_items?: number;
           last_swept_at?: string | null;
           period_days?: number;
+          moroccan_only?: boolean;
         };
         Relationships: [];
       };

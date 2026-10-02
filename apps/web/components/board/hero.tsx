@@ -10,6 +10,7 @@ import { Cover } from './cover';
 import { Glow } from './glass';
 import { CADENCES, PERIODS, scheduleText } from '@/lib/watchlists';
 import { Popover } from './popover';
+import { SearchSettings } from './search-settings';
 import type { ScanView } from './use-scan';
 
 function BoardMenu({ board }: { board: Tables<'watchlists'> }) {
@@ -58,6 +59,7 @@ function BoardMenu({ board }: { board: Tables<'watchlists'> }) {
               <button type="submit" className="btn-secondary !px-3" disabled={pending || !name.trim() || name === board.name}>Save</button>
             </div>
           </form>
+          <SearchSettings board={board} pending={pending} save={save} />
           {opts('Schedule', board.refresh_cadence, CADENCES.map((c) => ({ value: c as string, label: c === 'manual' ? 'Manual' : c === 'weekly' ? 'Weekly' : 'Monthly' })), (v) => save({ refresh_cadence: v }))}
           {board.source === 'tiktok_creative_center' && opts('Period', board.period_days, PERIODS.map((p) => ({ value: p as number, label: `${p} days` })), (v) => save({ period_days: v }))}
           {opts('Ads per scan', board.max_items, [10, 20, 30, 50].map((n) => ({ value: n, label: String(n) })), (v) => save({ max_items: v }))}

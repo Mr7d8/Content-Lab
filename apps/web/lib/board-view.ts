@@ -1,4 +1,4 @@
-import { checkMarket, labelText, REGION_NAMES, scannedAd, scanVideoUrl, sourceLabel, type Breakdown, type MarketCheck, type MarketVerdict, type Tables } from '@content-lab/core';
+import { checkMarket, labelText, REGION_NAMES, scannedAd, scanVideoUrl, searchTerms, sourceLabel, termsLabel, type Breakdown, type MarketCheck, type MarketVerdict, type Tables } from '@content-lab/core';
 
 // Everything the board shows, computed from database rows. Pure, so the
 // server loader and the tests share it.
@@ -184,14 +184,19 @@ export function formatCount(n: number | null | undefined): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
 }
 
-const SEARCH_WORD: Record<string, string> = { advertiser: 'Advertiser', keyword: 'Keyword', hashtag: 'Hashtag', account: 'Account' };
+const SEARCH_WORD: Record<string, [string, string]> = {
+  advertiser: ['Advertiser', 'Advertisers'], keyword: ['Keyword', 'Keywords'], hashtag: ['Hashtag', 'Hashtags'], account: ['Account', 'Accounts'],
+};
 
 // The micro label over the board title: where the ads come from.
 export function boardEyebrow(board: Pick<Tables<'watchlists'>, 'source' | 'type' | 'value' | 'region' | 'objective' | 'period_days'>): string[] {
   const parts = [sourceLabel(board.source)];
-  if (board.type !== 'industry') {
-    const shown = board.type === 'hashtag' ? `#${board.value}` : board.type === 'account' ? `@${board.value}` : board.value;
-    parts.push(`${SEARCH_WORD[board.type] ?? labelText(board.type)} ${shown}`);
+  if (board.type === 'snowball') parts.push('Following Moroccan advertisers');
+  else if (board.type !== 'industry') {
+    const prefix = board.type === 'hashtag' ? '#' : board.type === 'account' ? '@' : '';
+    const terms = searchTerms(board.value, board.type).map((t) => prefix + t);
+    const [one, many] = SEARCH_WORD[board.type] ?? [labelText(board.type), labelText(board.type)];
+    parts.push(`${terms.length > 1 ? many : one} ${termsLabel(terms)}`);
   }
   parts.push(board.region ? (REGION_NAMES[board.region] ?? board.region) : 'Any region');
   if (board.objective) parts.push(labelText(board.objective));

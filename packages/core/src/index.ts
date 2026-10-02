@@ -9,3 +9,5 @@ export { DECODE_SYSTEM, decodeJsonSchema, decodeUserText, type DecodeContext } f
 export type { Database, Json, Tables, TablesInsert, TablesUpdate } from './db';
 export * from './classify';
 export * from './market';
+export * from './terms';
+export * from './presets';

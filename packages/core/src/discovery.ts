@@ -10,7 +10,7 @@ export type DiscoverySource = (typeof DISCOVERY_SOURCES)[number];
 
 // Watchlist types each source can search by.
 export const WATCHLIST_TYPES: Readonly<Record<DiscoverySource, readonly Watchlist['type'][]>> = {
-  tiktok_creative_center: ['industry', 'advertiser', 'keyword'],
+  tiktok_creative_center: ['industry', 'advertiser', 'keyword', 'snowball'],
   tiktok_organic: ['keyword', 'hashtag', 'account'],
 };
 

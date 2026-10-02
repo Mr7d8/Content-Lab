@@ -9,7 +9,7 @@ describe('parseWatchlistForm', () => {
   it('builds a Creative Center advertiser watchlist with a default name', () => {
     expect(parseWatchlistForm(form({ source: 'tiktok_creative_center', type: 'advertiser', value: '  Noon ', region: 'AE', objective: 'purchase', refresh_cadence: 'weekly', max_items: '15' }))).toEqual({
       ok: true,
-      row: { name: 'Noon, United Arab Emirates', source: 'tiktok_creative_center', type: 'advertiser', value: 'Noon', region: 'AE', objective: 'purchase', refresh_cadence: 'weekly', max_items: 15, period_days: 30 },
+      row: { name: 'Noon, United Arab Emirates', source: 'tiktok_creative_center', type: 'advertiser', value: 'Noon', region: 'AE', objective: 'purchase', refresh_cadence: 'weekly', max_items: 15, period_days: 30, moroccan_only: false },
     });
   });
 
@@ -23,6 +23,22 @@ describe('parseWatchlistForm', () => {
     expect(parseWatchlistForm(form({ source: 'tiktok_creative_center', type: 'industry', value: 'all', region: 'MA', objective: 'purchase' }))).toMatchObject({
       row: { name: 'Top ads, Morocco', type: 'industry', value: 'all', objective: 'purchase' },
     });
+  });
+
+  it('keeps several terms, names the board after the first two, and reads the Moroccan gate', () => {
+    expect(parseWatchlistForm(form({ source: 'tiktok_creative_center', type: 'keyword', value: 'maroc,  livraison gratuite ، الدفع عند الاستلام, Maroc', region: 'MA', moroccan_only: 'true' }))).toMatchObject({
+      ok: true,
+      row: { value: 'maroc, livraison gratuite, الدفع عند الاستلام', name: 'maroc, livraison gratuite +1, Morocco', moroccan_only: true },
+    });
+    expect(parseWatchlistForm(form({ source: 'tiktok_organic', type: 'hashtag', value: '#tiktokmaroc, #maroc', region: 'MA' }))).toMatchObject({ row: { value: 'tiktokmaroc, maroc', name: '#tiktokmaroc, #maroc, Morocco' } });
+    expect(parseWatchlistForm(form({ source: 'tiktok_creative_center', type: 'keyword', value: `ok, ${'x'.repeat(61)}` }))).toMatchObject({ ok: false, message: expect.stringContaining('60 characters') });
+  });
+
+  it('builds a snowball board that follows the Moroccan advertisers', () => {
+    expect(parseWatchlistForm(form({ source: 'tiktok_creative_center', type: 'snowball', value: '', region: 'MA', moroccan_only: 'true' }))).toMatchObject({
+      ok: true, row: { type: 'snowball', value: 'auto', name: 'Moroccan advertisers found, Morocco', moroccan_only: true },
+    });
+    expect(parseWatchlistForm(form({ source: 'tiktok_organic', type: 'snowball', value: '' }))).toMatchObject({ ok: false });
   });
 
   it('rejects types a source cannot search by, and bad values', () => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { estimateScan, labelText } from '@content-lab/core';
+import { estimateScan, labelText, MOROCCO_PRESETS, type BoardPreset } from '@content-lab/core';
 import { AnimatePresence, motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
@@ -12,13 +12,14 @@ type Source = 'tiktok_creative_center' | 'tiktok_organic';
 const SEARCHES: Record<Source, { type: string; label: string; placeholder: string }[]> = {
   tiktok_creative_center: [
     { type: 'industry', label: 'Top ads', placeholder: '' },
-    { type: 'advertiser', label: 'Advertiser', placeholder: 'Noon' },
-    { type: 'keyword', label: 'Keyword', placeholder: 'تخفيضات' },
+    { type: 'advertiser', label: 'Advertisers', placeholder: 'Jumia, Temu, Marjane' },
+    { type: 'keyword', label: 'Keywords', placeholder: 'maroc, livraison gratuite, الدفع عند الاستلام' },
+    { type: 'snowball', label: 'Moroccan advertisers', placeholder: '' },
   ],
   tiktok_organic: [
-    { type: 'keyword', label: 'Keyword', placeholder: 'skincare routine' },
-    { type: 'hashtag', label: 'Hashtag', placeholder: 'tiktokmaroc' },
-    { type: 'account', label: 'Account', placeholder: 'jumia_ma' },
+    { type: 'keyword', label: 'Keywords', placeholder: 'unboxing maroc, شريت من' },
+    { type: 'hashtag', label: 'Hashtags', placeholder: 'tiktokmaroc, maroc' },
+    { type: 'account', label: 'Accounts', placeholder: 'jumia_ma, marjane' },
   ],
 };
 
@@ -53,6 +54,8 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
   const [ads, setAds] = useState(30);
   const [cadence, setCadence] = useState<string>('weekly');
   const [name, setName] = useState('');
+  const [moroccanOnly, setMoroccanOnly] = useState(true);
+  const [preset, setPreset] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -65,7 +68,18 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
 
   const searches = SEARCHES[source];
   const search = searches.find((s) => s.type === type) ?? (searches[0] as (typeof searches)[number]);
-  const needsValue = !(source === 'tiktok_creative_center' && search.type === 'industry');
+  const needsValue = !(source === 'tiktok_creative_center' && (search.type === 'industry' || search.type === 'snowball'));
+
+  const usePreset = (p: BoardPreset) => {
+    setPreset(p.id);
+    setSource(p.source);
+    setType(p.type);
+    setValue(p.type === 'snowball' ? '' : p.value);
+    setRegion(p.region);
+    setObjective(p.objective ?? '');
+    setMoroccanOnly(p.moroccanOnly);
+    setName(p.name);
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,7 +87,8 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
     const form = new FormData();
     form.set('source', source);
     form.set('type', search.type);
-    form.set('value', needsValue ? value : 'all');
+    form.set('value', needsValue ? value : search.type === 'snowball' ? 'auto' : 'all');
+    form.set('moroccan_only', String(moroccanOnly));
     form.set('region', region);
     if (source === 'tiktok_creative_center' && objective) form.set('objective', objective);
     form.set('period_days', String(period));
@@ -122,6 +137,17 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
               <button type="button" className="chip" onClick={onClose} aria-label="Close">✕</button>
             </div>
 
+            <Field label="Moroccan starters">
+              <div className="flex flex-wrap gap-1.5">
+                {MOROCCO_PRESETS.map((p) => (
+                  <button key={p.id} type="button" className={`chip ${preset === p.id ? 'active' : ''}`} aria-pressed={preset === p.id} onClick={() => usePreset(p)} title={p.description}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              {preset && <p className="text-xs leading-snug text-sub">{MOROCCO_PRESETS.find((p) => p.id === preset)?.description}</p>}
+            </Field>
+
             <Field label="Source">
               <Segmented
                 label="Source"
@@ -139,16 +165,22 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
                 <Segmented label="Search by" value={search.type} onChange={setType} options={searches.map((s) => ({ value: s.type, label: s.label }))} />
               </div>
               {needsValue ? (
-                <input
-                  className="field mt-2"
-                  required
-                  maxLength={100}
-                  value={value}
-                  onChange={(e) => setValue(e.target.value)}
-                  placeholder={search.placeholder}
-                  aria-label={search.label}
-                  dir="auto"
-                />
+                <>
+                  <textarea
+                    className="field mt-2 min-h-[64px] resize-y"
+                    required
+                    maxLength={700}
+                    rows={2}
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    placeholder={search.placeholder}
+                    aria-label={search.label}
+                    dir="auto"
+                  />
+                  <p className="text-xs text-faint">Up to 10 terms, separated by commas. Each one is searched and the results are pooled.</p>
+                </>
+              ) : search.type === 'snowball' ? (
+                <p className="mt-1 text-xs text-sub">Searches for the advertisers found to be Moroccan by the checks, and the ones you marked Moroccan. It grows as you scan other Moroccan boards.</p>
               ) : (
                 <p className="mt-1 text-xs text-sub">The best performing ads across every industry, for the country and objective below.</p>
               )}
@@ -175,6 +207,16 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
                 <Segmented label="Schedule" value={cadence} onChange={setCadence} options={CADENCES.map((c) => ({ value: c, label: c === 'manual' ? 'Manual' : cadenceText(c).replace('Every ', 'Each ') }))} />
               </Field>
             </div>
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-[16px] bg-white/60 p-3 shadow-[var(--glass-rim)]">
+              <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--accent)]" checked={moroccanOnly} onChange={(e) => setMoroccanOnly(e.target.checked)} />
+              <span className="min-w-0">
+                <span className="block text-[13.5px] font-semibold tracking-tight">Moroccan ads only</span>
+                <span className="block text-xs leading-snug text-sub">
+                  Ads made for other countries are left out. Unclear ones are checked first: their landing page, then their cover. About a cent per 5 ads checked.
+                </span>
+              </span>
+            </label>
 
             <Field label={`Ads per scan · ${ads}`}>
               <input type="range" min={10} max={50} step={5} value={ads} onChange={(e) => setAds(Number(e.target.value))} className="w-full accent-[var(--accent)]" aria-label="Ads per scan" />
