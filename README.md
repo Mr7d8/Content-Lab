@@ -2,11 +2,11 @@
 
 Internal tool that collects top TikTok ads in our categories, tags every creative element, and turns the winning patterns into a production brief for the VCC, Motion and Design teams.
 
-Status: **Phase 1 built** (manual import, processing pipeline, Library, animated views). Next: a pilot on hand-picked ads, then Phase 2 scheduled collection and scoring.
+Status: **Phase 1 built** (manual import, processing pipeline, Library, animated views) plus **research mode** (scheduled watchlist sweeps under a monthly cap). Next: a pilot on hand-picked ads, then scoring and patterns.
 
 ## How it works
 
-1. **Collect**: paste TikTok or Creative Center links, see the cost estimate, set a spend cap, start.
+1. **Collect**: a daily sweep researches each watchlist (Creative Center top ads, or TikTok searches) and keeps its best new ads, under a monthly spend cap; **Research now** runs one on demand. Or paste TikTok or Creative Center links, see the cost estimate, set a spend cap, start.
 2. **Worker** (Apify actor): resolves each link through Apify, downloads the video once, extracts WebP keyframes, scene cuts and audio with FFmpeg, transcribes with Groq, then deletes the raw video.
 3. **Classification in two calls**: a vision pass (Gemini free tier, or Claude) describes every keyframe and reads all on-screen text; TypeSafe Jev classifies transcript plus vision text into the taxonomy. Music-only ads work from the vision text alone.
 4. **Library**: filter on any label, open an item to see its keyframes, transcript roles, labels with evidence, and correct labels.
@@ -31,7 +31,7 @@ pnpm install
 cp .env.example .env            # and apps/web/.env.local
 pnpm run doctor --online
 pnpm dev                        # dashboard
-pnpm worker:dev --run <run id>  # worker, locally
+pnpm worker:dev --run <run id>  # worker, locally (or --sweep)
 pnpm test
 ```
 

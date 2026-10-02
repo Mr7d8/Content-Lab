@@ -22,6 +22,7 @@ Gemini's free tier may use prompts to improve Google's models. That is fine for 
 2. Apply the migrations in order, either with the Supabase CLI (`supabase link`, then `supabase db push`) or by pasting each file from `supabase/migrations/` into the SQL editor:
    - `20261001000000_init.sql`: tables, RLS, the private `frames` bucket, Realtime.
    - `20261001000100_first_sweep_watchlists.sql`: the first sweep watchlists.
+   - `20261002000000_research_mode.sql`: research mode (watchlist schedule columns, `app_settings` with the monthly cap, `month_spend_usd()`).
 3. Add yourself to the allowlist (only listed emails can see any data):
 
    ```sql
@@ -34,7 +35,7 @@ Gemini's free tier may use prompts to improve Google's models. That is fine for 
 
    Email magic links are on by default.
 
-To check the SQL itself on a throwaway local Postgres: `DATABASE_URL=postgres://... pnpm db:check` (19 checks). After changing a migration, regenerate types with `pnpm db:types` (or `supabase gen types typescript`).
+To check the SQL itself on a throwaway local Postgres: `DATABASE_URL=postgres://... pnpm db:check` (22 checks). After changing a migration, regenerate types with `pnpm db:types` (or `supabase gen types typescript`).
 
 ## 3. Environment
 
@@ -56,16 +57,29 @@ The worker is an Apify actor in `apps/worker`. Its `.actor/actor.json` builds fr
    ```
    https://github.com/Mr7d8/Content-Lab.git#main:apps/worker
    ```
-3. In the actor's settings, add environment variables (mark keys as secret): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `TYPESAFE_API_KEY`, and optionally `GEMINI_MODEL`, `JEV_MODEL`, `VISION_PROVIDER`, `APIFY_CREATIVE_CENTER_ACTOR_ID`, `GROQ_REQUESTS_PER_MINUTE`, `GEMINI_REQUESTS_PER_MINUTE`. Apify injects `APIFY_TOKEN` itself.
-4. Put the actor id (for example `yourname~content-lab-worker`) in the dashboard's `APIFY_WORKER_ACTOR_ID`.
+3. In the actor's settings, add environment variables (mark keys as secret): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `TYPESAFE_API_KEY`, and optionally `GEMINI_MODEL`, `JEV_MODEL`, `VISION_PROVIDER`, `APIFY_CREATIVE_CENTER_ACTOR_ID` (default `fetch_cat~tiktok-ads-library-scraper`), `GROQ_REQUESTS_PER_MINUTE`, `GEMINI_REQUESTS_PER_MINUTE`. Apify injects `APIFY_TOKEN` itself. Each build keeps the variables set when it ran, so build again after changing them.
+4. In the actor's **Settings**, set the default run **Timeout** to 3600 seconds (new actors default to 300, too short for a run).
+5. Put the actor id (shown in the console URL, or `yourname~content-lab-worker`) in the dashboard's `APIFY_WORKER_ACTOR_ID`.
+6. After code changes land on `main`, click **Build** on the actor so it runs the new code.
 
-Locally, the same pipeline runs with `pnpm worker:dev --run <run id>` (needs FFmpeg).
+Locally, the same code runs with `pnpm worker:dev --run <run id>` or `pnpm worker:dev --sweep` (needs FFmpeg).
 
 ## 5. Dashboard on Vercel
 
 Create a Vercel project from this repository with the root directory `apps/web` (framework: Next.js). Add `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `APIFY_TOKEN` and `APIFY_WORKER_ACTOR_ID`, and optionally `NEXT_PUBLIC_SITE_URL` for magic link redirects. Locally: `pnpm dev`.
 
-## 6. First pilot
+## 6. Research mode (daily sweep)
+
+Watchlists refresh on their own through one Apify Schedule that starts the worker in sweep mode. See [research-mode.md](research-mode.md) for how a sweep picks ads.
+
+1. In the Apify console, open **Schedules**, then **Create new**.
+2. Cron: `0 6 * * *`, time zone **Africa/Casablanca** (every day at 06:00).
+3. **Add** an actor: pick the worker actor, set the input to `{ "mode": "sweep" }`, and under run options set the timeout to 3600 seconds.
+4. Save and make sure the schedule is enabled.
+
+Each day the sweep runs the watchlists that are due (weekly or monthly, most overdue first), keeps the best new ads of each and processes them. It stops when this month's spend reaches the cap on **Collect** ($5 by default), after about 40 minutes (the rest wait for the next day), or when the daily sweep is switched off there. **Research now** on Collect runs one watchlist immediately under the same caps.
+
+## 7. First pilot
 
 1. Open `/demo` to see the animated views on synthetic data (no keys needed).
 2. Sign in, open **Collect**, paste three TikTok video links, keep the suggested spend cap, and start.
@@ -73,12 +87,12 @@ Create a Vercel project from this repository with the root directory `apps/web` 
 4. Check the results in **Library** and correct any label that is wrong; corrections are kept next to the model output.
 5. Then do the 10 hand-picked strong ads from the plan's checklist to judge label quality before any scraping.
 
-## Known limits in Phase 1
+## Known limits
 
-- **Creative Center links** need an Apify actor to be picked and checked on one URL (`APIFY_CREATIVE_CENTER_ACTOR_ID`). Until then they are flagged for review with that message. TikTok video links work through `clockworks/tiktok-scraper`.
+- **Creative Center** searches use `fetch_cat/tiktok-ads-library-scraper`; its input and output field names follow its listing and are checked against a first real run. Pasted Creative Center links still need an actor that accepts detail URLs, or they are flagged for review. TikTok video links work through `clockworks/tiktok-scraper`.
+- **Morocco in Creative Center** is unconfirmed. If the Morocco sweeps come back empty, add organic keyword or hashtag watchlists for Morocco instead.
 - **Field names** of the TikTok scraper output and the Jev request shape follow their documentation and Creator Lab's working client; confirm both on the first pilot.
 - **Percentiles** on the performance map are ranked within each source from its primary metric (views for organic, CTR for Creative Center) until the Phase 2 scoring step fills `scores`.
-- **Watchlists** are stored but collected by hand for now; scheduled sweeps come in Phase 2.
 
 ## Development
 
