@@ -16,7 +16,7 @@ export class MemoryStore implements Store {
     const run: RunRow = {
       id: `run-${this.runs.size + 1}`, source: 'manual_import', watchlist_id: null, status: 'queued',
       items_requested: 0, items_done: 0, items_failed: 0, cost_estimate_usd: null, spend_cap_usd: 1,
-      cost_actual_usd: 0, pause_requested: false, worker_run_id: null, error: null, created_by: null,
+      cost_actual_usd: 0, pause_requested: false, worker_run_id: null, error: null, created_by: null, trigger: 'manual',
       created_at: '2026-10-01T00:00:00Z', started_at: null, finished_at: null, updated_at: '2026-10-01T00:00:00Z',
       ...patch,
     };
