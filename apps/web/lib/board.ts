@@ -54,7 +54,7 @@ export async function loadBoard(supabase: ServerClient, boardId: string): Promis
   const [{ data: classes }, { data: media }] = ids.length
     ? await Promise.all([
       supabase.from('classifications').select('item_id, labels_json, created_at').in('item_id', ids).order('created_at', { ascending: false }),
-      supabase.from('media').select('item_id, breakdown_json, transcript').in('item_id', ids),
+      supabase.from('media').select('item_id, breakdown_json, transcript, ocr_text, transcript_lang').in('item_id', ids),
     ])
     : [{ data: [] }, { data: [] }];
   const latestClass = new Map<string, NonNullable<typeof classes>[number]>();
