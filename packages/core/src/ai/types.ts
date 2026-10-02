@@ -1,3 +1,4 @@
+import type { CoverContext, CoverOutput } from '../cover';
 import type { DecodeOutput } from '../decode';
 import type { DecodeContext } from '../prompts/decode';
 
@@ -13,6 +14,13 @@ export interface VideoDecoder {
   // provider:model, stored in media.vision_model.
   readonly name: string;
   decode(video: VideoInput, seconds: number[], context: DecodeContext): Promise<{ output: DecodeOutput } & Usage>;
+}
+
+// The Moroccan check's cover read: one image in, its text and country out.
+export type ImageInput = { data: Uint8Array; mimeType: string };
+export interface CoverReader {
+  readonly name: string;
+  read(image: ImageInput, context: CoverContext): Promise<{ output: CoverOutput } & Usage>;
 }
 
 // Call 2: text in (speech plus frame descriptions), typed answers out.

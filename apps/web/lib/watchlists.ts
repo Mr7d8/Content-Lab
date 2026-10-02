@@ -1,11 +1,15 @@
 import {
   CADENCE_DAYS,
   DISCOVERY_SOURCES,
+  joinTerms,
   MAX_SCAN_ADS,
+  MAX_TERM_LENGTH,
   nextSweepAt,
   REGION_GROUPS,
   REGION_NAMES,
+  searchTerms,
   sourceLabel,
+  termsLabel,
   WATCHLIST_TYPES,
   type DiscoverySource,
   type Tables,
@@ -23,6 +27,7 @@ export const TYPE_LABELS: Record<string, string> = {
   keyword: 'Keyword',
   hashtag: 'Hashtag',
   account: 'Account',
+  snowball: 'Moroccan advertisers found',
 };
 
 export const OBJECTIVES = ['app_install', 'purchase'] as const;
@@ -37,6 +42,22 @@ export function regionLabel(region: string | null): string {
 
 export type ParsedWatchlist = { ok: true; row: TablesInsert<'watchlists'> } | { ok: false; message: string };
 
+// A board's stored search value: its terms joined by commas, "auto" for
+// snowball boards (they follow the advertisers marked Moroccan), the
+// industry key or "all" for industry boards.
+export function boardValue(type: string, raw: string): { ok: true; value: string; terms: string[] } | { ok: false; message: string } {
+  if (type === 'snowball') return { ok: true, value: 'auto', terms: [] };
+  if (type === 'industry') {
+    const value = raw.trim().replace(/\s+/g, ' ') || 'all';
+    return value.length > 100 ? { ok: false, message: 'Keep the industry under 100 characters.' } : { ok: true, value, terms: [] };
+  }
+  const terms = searchTerms(raw, type);
+  if (!terms.length) return { ok: false, message: `Enter the ${TYPE_LABELS[type]?.toLowerCase() ?? 'search'} to look for. Separate several with commas.` };
+  const long = terms.find((t) => t.length > MAX_TERM_LENGTH);
+  if (long) return { ok: false, message: `Keep each term under ${MAX_TERM_LENGTH} characters ("${long.slice(0, 24)}…" is longer).` };
+  return { ok: true, value: joinTerms(terms), terms };
+}
+
 // Validates the Add watchlist form. `get` reads one field.
 export function parseWatchlistForm(get: (name: string) => string | null): ParsedWatchlist {
   const source = get('source') ?? '';
@@ -45,11 +66,9 @@ export function parseWatchlistForm(get: (name: string) => string | null): Parsed
   if (!WATCHLIST_TYPES[source as DiscoverySource].includes(type)) {
     return { ok: false, message: `${sourceLabel(source)} cannot search by ${TYPE_LABELS[type]?.toLowerCase() ?? 'that'}.` };
   }
-  let value = (get('value') ?? '').trim().replace(/\s+/g, ' ');
-  if (type === 'hashtag') value = value.replace(/^#/, '');
-  if (type === 'account') value = value.replace(/^@/, '');
-  if (!value) return { ok: false, message: `Enter the ${TYPE_LABELS[type]?.toLowerCase()} to search for.` };
-  if (value.length > 100) return { ok: false, message: 'Keep the search value under 100 characters.' };
+  const parsedValue = boardValue(type, get('value') ?? '');
+  if (!parsedValue.ok) return parsedValue;
+  const { value, terms } = parsedValue;
 
   const region = get('region') || null;
   if (region !== null && !REGION_OPTIONS.includes(region)) return { ok: false, message: 'Pick a region from the list.' };
@@ -62,10 +81,18 @@ export function parseWatchlistForm(get: (name: string) => string | null): Parsed
   const period = Number(get('period_days') ?? 30);
   if (!(PERIODS as readonly number[]).includes(period)) return { ok: false, message: 'Pick a period: 7, 30 or 180 days.' };
 
+  const moroccanOnly = get('moroccan_only') === 'true';
+
   // An industry board without a Creative Center industry key scans every industry.
-  const shown = type === 'hashtag' ? `#${value}` : type === 'account' ? `@${value}` : type === 'industry' && !/^label_\d+$/.test(value) ? 'Top ads' : value;
+  const prefix = type === 'hashtag' ? '#' : type === 'account' ? '@' : '';
+  const shown = type === 'snowball'
+    ? TYPE_LABELS.snowball
+    : terms.length ? termsLabel(terms.map((t) => prefix + t)) : type === 'industry' && !/^label_\d+$/.test(value) ? 'Top ads' : value;
   const name = (get('name') ?? '').trim().slice(0, 80) || `${shown}, ${regionLabel(region)}`;
-  return { ok: true, row: { name, source, type, value, region, objective, refresh_cadence: cadence, max_items: maxItems, period_days: period } };
+  return {
+    ok: true,
+    row: { name, source, type, value, region, objective, refresh_cadence: cadence, max_items: maxItems, period_days: period, moroccan_only: moroccanOnly },
+  };
 }
 
 const DAY_MS = 86_400_000;

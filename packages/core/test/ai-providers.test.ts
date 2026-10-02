@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { claudeWriter, createAIProviders, geminiDecoder, jevClassifier, parseJevAnswers } from '../src/ai';
+import { claudeWriter, createAIProviders, geminiCoverReader, geminiDecoder, jevClassifier, parseJevAnswers } from '../src/ai';
+import { COVER_ESTIMATE_USD, coverCost, toCoverRead } from '../src/cover';
 import { buildQuestions } from '../src/classify';
 
 describe('gemini', () => {
@@ -10,6 +11,29 @@ describe('gemini', () => {
     await expect(geminiDecoder('k', { fetchImpl: blocked as unknown as typeof fetch }).decode(video, [0, 1], context)).rejects.toThrow('blocked');
     const empty = vi.fn(async () => Response.json({ candidates: [{ content: { parts: [] }, finishReason: 'MAX_TOKENS' }] }));
     await expect(geminiDecoder('k', { fetchImpl: empty as unknown as typeof fetch }).decode(video, [0, 1], context)).rejects.toThrow('no content (MAX_TOKENS)');
+  });
+});
+
+describe('gemini cover reader', () => {
+  it('sends the cover inline with the ad text and parses the read', async () => {
+    const answer = { on_screen_text: ['حيط عادي؟'], prices: ['199 DH'], country: 'MA', evidence: 'Price in DH and Darija.' };
+    const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as { contents: { parts: Record<string, unknown>[] }[] };
+      expect(body.contents[0]?.parts[0]).toEqual({ inlineData: { mimeType: 'image/jpeg', data: 'AQID' } });
+      expect(String(body.contents[0]?.parts[1]?.text)).toContain('طلب ديالك دابا');
+      return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify(answer) }] } }], usageMetadata: { promptTokenCount: 1500, candidatesTokenCount: 80 } });
+    });
+    const reader = geminiCoverReader('k', { fetchImpl: fetchImpl as unknown as typeof fetch });
+    const result = await reader.read({ data: new Uint8Array([1, 2, 3]), mimeType: 'image/jpeg' }, { caption: 'طلب ديالك دابا', advertiser: null });
+    expect(result).toMatchObject({ output: answer, inputTokens: 1500, outputTokens: 80 });
+    expect(toCoverRead(result.output)).toEqual({ text: ['حيط عادي؟', '199 DH'], country: 'MA' });
+    expect(coverCost(result)).toBeCloseTo(0.00065, 5);
+    expect(COVER_ESTIMATE_USD).toBeLessThan(0.002);
+  });
+
+  it('rejects a country that is not a two-letter code', async () => {
+    const fetchImpl = vi.fn(async () => Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify({ on_screen_text: [], prices: [], country: 'Morocco', evidence: '' }) }] } }] }));
+    await expect(geminiCoverReader('k', { fetchImpl: fetchImpl as unknown as typeof fetch }).read({ data: new Uint8Array([1]), mimeType: 'image/jpeg' }, { caption: null, advertiser: null })).rejects.toThrow();
   });
 });
 

@@ -266,3 +266,79 @@ do $$ begin
   if has_table_privilege('anon', 'public.board_items', 'select') then raise exception 'FAIL anon can read board items'; end if;
   raise notice 'PASS covers bucket public, board items closed to anon';
 end $$;
+
+-- Moroccan boards: the gate, board item status, advertisers, market checks in spend
+begin;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111","email":"member@example.com"}';
+do $$ declare board uuid; item uuid; spend_before numeric; n int; begin
+  if exists (select 1 from public.watchlists where region = 'MA' and not moroccan_only) then raise exception 'FAIL Morocco boards without the gate'; end if;
+  insert into public.watchlists (name, source, type, value, region) values ('Followed', 'tiktok_creative_center', 'snowball', 'auto', 'MA') returning id into board;
+  if (select moroccan_only from public.watchlists where id = board) then raise exception 'FAIL new boards gated by default'; end if;
+  begin
+    insert into public.watchlists (name, source, type, value) values ('Bad', 'tiktok_creative_center', 'brand', 'x');
+    raise exception 'FAIL unknown board type accepted';
+  exception when check_violation then null; end;
+  insert into public.items (source, source_url, external_id) values ('tiktok_creative_center', 'https://ads.tiktok.com/business/creativecenter/topads/7300000000000000999/', '7300000000000000999') returning id into item;
+  insert into public.board_items (watchlist_id, item_id) values (board, item);
+  if (select status from public.board_items where item_id = item) <> 'shown' then raise exception 'FAIL board items not shown by default'; end if;
+  update public.board_items set status = 'pending' where item_id = item;
+  begin
+    update public.board_items set status = 'hidden' where item_id = item;
+    raise exception 'FAIL unknown board item status accepted';
+  exception when check_violation then null; end;
+  insert into public.advertisers (key, name, status, origin, item_id) values ('domain:sooknow.com', 'sooknow.com', 'moroccan', 'auto', item);
+  begin
+    insert into public.advertisers (key, name, status, origin) values ('sooknow', 'x', 'moroccan', 'auto');
+    raise exception 'FAIL advertiser key without a kind accepted';
+  exception when check_violation then null; end;
+  begin
+    insert into public.advertisers (key, name, status, origin) values ('brand:x', 'x', 'maybe', 'auto');
+    raise exception 'FAIL unknown advertiser status accepted';
+  exception when check_violation then null; end;
+  select public.month_spend_usd() into spend_before;
+  update public.items set market_json = jsonb_build_object('verdict', 'moroccan', 'cost_usd', 0.003, 'checked_at', now()) where id = item;
+  if public.month_spend_usd() - spend_before <> 0.003 then raise exception 'FAIL month spend leaves out market checks'; end if;
+  begin
+    update public.items set market_json = '[]' where id = item;
+    raise exception 'FAIL market_json array accepted';
+  exception when check_violation then null; end;
+  delete from public.items where id = item;
+  select count(*) into n from public.advertisers where key = 'domain:sooknow.com' and item_id is null;
+  if n <> 1 then raise exception 'FAIL advertiser lost with its ad'; end if;
+  raise notice 'PASS Moroccan gate, board item status, advertisers, market spend';
+end $$;
+rollback;
+
+begin;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"22222222-2222-2222-2222-222222222222","email":"stranger@example.com"}';
+do $$ begin
+  begin
+    insert into public.advertisers (key, name, status, origin) values ('brand:x', 'x', 'blocked', 'manual');
+    raise exception 'FAIL stranger added an advertiser';
+  exception when insufficient_privilege then null; end;
+  if has_table_privilege('anon', 'public.advertisers', 'select') then raise exception 'FAIL anon can read advertisers'; end if;
+  raise notice 'PASS advertisers closed to strangers and anon';
+end $$;
+rollback;
+
+-- The Moroccan check's claims: one check per ad, stale claims expire, server only
+begin;
+do $$ declare board uuid; a uuid; b uuid; c uuid; n int; got uuid; begin
+  insert into public.watchlists (name, source, type, value, region, moroccan_only) values ('Claims', 'tiktok_creative_center', 'keyword', 'maroc', 'MA', true) returning id into board;
+  insert into public.items (source, source_url, external_id) values ('tiktok_creative_center', 'https://x/1', '7300000000000001001') returning id into a;
+  insert into public.items (source, source_url, external_id) values ('tiktok_creative_center', 'https://x/2', '7300000000000001002') returning id into b;
+  insert into public.items (source, source_url, external_id, market_json) values ('tiktok_creative_center', 'https://x/3', '7300000000000001003', '{"verdict":"moroccan"}') returning id into c;
+  insert into public.board_items (watchlist_id, item_id, rank, status) values (board, a, 1, 'pending'), (board, b, 2, 'pending'), (board, c, 3, 'pending');
+  select item_id into got from public.claim_market_checks(board, 1);
+  if got <> a then raise exception 'FAIL claim does not take the top ranked ad first'; end if;
+  if not (select market_json ? 'checking_at' from public.items where id = a) then raise exception 'FAIL claim not marked'; end if;
+  select count(*) into n from public.claim_market_checks(board, 5);
+  if n <> 1 then raise exception 'FAIL claimed ads taken twice or a checked ad taken (%)', n; end if;
+  select count(*) into n from public.claim_market_checks(board, 5, interval '-1 second');
+  if n <> 2 then raise exception 'FAIL stale claims not taken back (%)', n; end if;
+  if has_function_privilege('authenticated', 'public.claim_market_checks(uuid, integer, interval)', 'execute') then raise exception 'FAIL members can claim'; end if;
+  raise notice 'PASS Moroccan check claims';
+end $$;
+rollback;

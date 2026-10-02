@@ -1,5 +1,6 @@
 import { CREATIVE_CENTER_OBJECTIVE, expandRegion } from './sources';
 import type { Tables } from './db';
+import { MAX_TERMS, searchTerms } from './terms';
 import { parseLink } from './urls';
 
 // v2 scans: one scraper call per board fetches ad metadata and covers only,
@@ -14,13 +15,22 @@ export type ScanSource = (typeof SCAN_SOURCES)[number];
 // Creative Center industry filters are keys like label_22110000000.
 const isIndustryKey = (value: string) => /^label_\d+$/.test(value);
 
+// What a scan needs besides the board: for snowball boards, the names of the
+// advertisers marked Moroccan, newest first.
+export type ScanExtras = { followed?: string[] };
+
 // Input for fetch_cat/tiktok-ads-library-scraper (checked on a real run:
 // period is "7", "30" or "180"; regions and keywords are lists).
-export function creativeCenterScanInput(board: Board): Raw {
+export function creativeCenterScanInput(board: Board, extras: ScanExtras = {}): Raw {
   const input: Raw = { period: String(board.period_days), maxItems: board.max_items };
   const countries = expandRegion(board.region);
   if (countries) input.regions = countries;
-  if (board.type === 'advertiser' || board.type === 'keyword') input.keywords = [board.value];
+  if (board.type === 'advertiser' || board.type === 'keyword') input.keywords = searchTerms(board.value, board.type);
+  if (board.type === 'snowball') {
+    const names = (extras.followed ?? []).slice(0, MAX_TERMS);
+    if (!names.length) throw new Error('No Moroccan advertisers yet: scan a Moroccan board so its ads get checked, or mark ads Moroccan');
+    input.keywords = names;
+  }
   if (board.type === 'industry' && isIndustryKey(board.value)) input.industry = board.value;
   const objective = board.objective ? CREATIVE_CENTER_OBJECTIVE[board.objective as keyof typeof CREATIVE_CENTER_OBJECTIVE] : undefined;
   if (objective) input.objective = objective;
@@ -28,19 +38,20 @@ export function creativeCenterScanInput(board: Board): Raw {
 }
 
 // Input for clockworks/tiktok-scraper: metadata only, no video download.
+// resultsPerPage counts per term, so the board's total is shared out.
 export function organicScanInput(board: Board): Raw {
-  const value = board.value.trim();
+  const terms = searchTerms(board.value, board.type);
   const input: Raw = {
-    resultsPerPage: board.max_items,
+    resultsPerPage: Math.max(1, Math.ceil(board.max_items / Math.max(1, terms.length))),
     shouldDownloadVideos: false,
     shouldDownloadCovers: false,
     shouldDownloadSubtitles: false,
     shouldDownloadSlideshowImages: false,
   };
-  if (board.type === 'hashtag') input.hashtags = [value.replace(/^#/, '')];
-  else if (board.type === 'account') input.profiles = [value.replace(/^@/, '')];
+  if (board.type === 'hashtag') input.hashtags = terms;
+  else if (board.type === 'account') input.profiles = terms;
   else {
-    input.searchQueries = [value];
+    input.searchQueries = terms;
     input.searchSection = '/video';
   }
   const countries = expandRegion(board.region);
@@ -48,8 +59,8 @@ export function organicScanInput(board: Board): Raw {
   return input;
 }
 
-export function scanInput(board: Board): Raw {
-  if (board.source === 'tiktok_creative_center') return creativeCenterScanInput(board);
+export function scanInput(board: Board, extras: ScanExtras = {}): Raw {
+  if (board.source === 'tiktok_creative_center') return creativeCenterScanInput(board, extras);
   if (board.source === 'tiktok_organic') return organicScanInput(board);
   throw new Error(`Boards of source ${board.source} cannot be scanned yet`);
 }
