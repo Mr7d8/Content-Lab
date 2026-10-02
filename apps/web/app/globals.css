@@ -58,21 +58,25 @@ body {
   .glass {
     background: var(--card-bg);
     backdrop-filter: blur(24px) saturate(1.6);
-    -webkit-backdrop-filter: blur(24px) saturate(1.6);
     box-shadow: var(--shadow);
   }
   /* Apple style liquid glass for floating chrome: bars, pills, popovers. */
   .liquid {
     background: var(--glass-fill);
     backdrop-filter: blur(26px) saturate(1.9) brightness(1.04);
-    -webkit-backdrop-filter: blur(26px) saturate(1.9) brightness(1.04);
     box-shadow: var(--glass-rim), var(--glass-drop);
+  }
+  /* Denser glass for the sticky top bar, so it stays readable over
+     whatever scrolls under it. */
+  .liquid-bar {
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.78) 100%);
+    backdrop-filter: blur(32px) saturate(1.9);
+    box-shadow: var(--glass-rim), 0 10px 30px -10px rgba(16, 24, 40, 0.25), 0 1px 3px rgba(16, 24, 40, 0.08);
   }
   /* The same glass on top of photos and video: darker, white text. */
   .liquid-dark {
     background: linear-gradient(160deg, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0.06) 100%), rgba(0, 0, 0, 0.16);
     backdrop-filter: blur(18px) saturate(1.7);
-    -webkit-backdrop-filter: blur(18px) saturate(1.7);
     box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.45), inset 0 0 0 0.5px rgba(255, 255, 255, 0.28), 0 6px 18px rgba(0, 0, 0, 0.22);
     color: #fff;
   }
@@ -137,7 +141,6 @@ body {
   .btn-secondary {
     background: var(--glass-fill);
     backdrop-filter: blur(20px) saturate(1.8);
-    -webkit-backdrop-filter: blur(20px) saturate(1.8);
     box-shadow: var(--glass-rim), var(--glass-drop);
     color: var(--ink);
   }
@@ -276,16 +279,15 @@ body {
 
 @media (prefers-reduced-transparency: reduce) {
   .liquid,
+  .liquid-bar,
   .btn-secondary,
   .glass {
     background: var(--card-bg-solid);
     backdrop-filter: none;
-    -webkit-backdrop-filter: none;
   }
   .liquid-dark {
     background: rgba(0, 0, 0, 0.6);
     backdrop-filter: none;
-    -webkit-backdrop-filter: none;
   }
   .pblur {
     display: none;
