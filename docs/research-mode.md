@@ -1,6 +1,6 @@
 # Research mode: scheduled watchlist sweeps
 
-Proposal, waiting for approval. Decided so far: scheduled sweeps plus a Research now button (no topic research, no automatic briefs yet), and a monthly cap of $5 so sweeps stay inside Apify's free credit.
+Approved on 2026-10-02. Decided: scheduled sweeps plus a Research now button (no topic research, no automatic briefs yet), and a monthly cap of $5 so sweeps stay inside Apify's free credit.
 
 ## What you get
 

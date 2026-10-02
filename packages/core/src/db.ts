@@ -5,6 +5,30 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type Database = {
   public: {
     Tables: {
+      app_settings: {
+        Row: {
+          id: boolean;
+          monthly_spend_cap_usd: number;
+          sweep_spend_cap_usd: number;
+          sweeps_enabled: boolean;
+          updated_at: string;
+        };
+        Insert: {
+          id?: boolean;
+          monthly_spend_cap_usd?: number;
+          sweep_spend_cap_usd?: number;
+          sweeps_enabled?: boolean;
+          updated_at?: string;
+        };
+        Update: {
+          id?: boolean;
+          monthly_spend_cap_usd?: number;
+          sweep_spend_cap_usd?: number;
+          sweeps_enabled?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       briefs: {
         Row: {
           id: string;
@@ -406,6 +430,7 @@ export type Database = {
           started_at: string | null;
           finished_at: string | null;
           updated_at: string;
+          trigger: string;
         };
         Insert: {
           id?: string;
@@ -426,6 +451,7 @@ export type Database = {
           started_at?: string | null;
           finished_at?: string | null;
           updated_at?: string;
+          trigger?: string;
         };
         Update: {
           id?: string;
@@ -446,6 +472,7 @@ export type Database = {
           started_at?: string | null;
           finished_at?: string | null;
           updated_at?: string;
+          trigger?: string;
         };
         Relationships: [
           {
@@ -521,6 +548,8 @@ export type Database = {
           created_by: string | null;
           created_at: string;
           updated_at: string;
+          max_items: number;
+          last_swept_at: string | null;
         };
         Insert: {
           id?: string;
@@ -535,6 +564,8 @@ export type Database = {
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
+          max_items?: number;
+          last_swept_at?: string | null;
         };
         Update: {
           id?: string;
@@ -549,6 +580,8 @@ export type Database = {
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
+          max_items?: number;
+          last_swept_at?: string | null;
         };
         Relationships: [];
       };
@@ -556,6 +589,7 @@ export type Database = {
     Views: { [_ in never]: never };
     Functions: {
       is_team_member: { Args: Record<PropertyKey, never>; Returns: boolean };
+      month_spend_usd: { Args: Record<PropertyKey, never>; Returns: number };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

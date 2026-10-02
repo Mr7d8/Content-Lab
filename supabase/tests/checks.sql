@@ -146,3 +146,57 @@ do $$ begin
   if (select file_size_limit from storage.buckets where id = 'frames') <> 524288 then raise exception 'FAIL bucket limit'; end if;
   raise notice 'PASS frames bucket 512 KB WebP';
 end $$;
+
+-- 9. Research mode: settings, month spend, sweep columns
+begin;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111","email":"member@example.com"}';
+insert into public.runs (source, spend_cap_usd, cost_actual_usd, trigger) values ('tiktok_creative_center', 0.5, 0.25, 'schedule');
+insert into public.runs (source, spend_cap_usd, cost_actual_usd, created_at) values ('manual_import', 2, 1, now() - interval '40 days');
+do $$ declare spend numeric; begin
+  update public.app_settings set monthly_spend_cap_usd = 7;
+  if (select monthly_spend_cap_usd from public.app_settings) <> 7 then raise exception 'FAIL member cannot update settings'; end if;
+  begin
+    insert into public.app_settings (id) values (true);
+    raise exception 'FAIL member inserted a settings row';
+  exception when insufficient_privilege then null; end;
+  select public.month_spend_usd() into spend;
+  if spend <> 0.25 then raise exception 'FAIL month spend %, expected 0.25 (last month excluded)', spend; end if;
+  if (select count(*) from public.runs where trigger = 'manual') < 1 then raise exception 'FAIL trigger default'; end if;
+  if (select min(max_items) from public.watchlists) <> 10 or (select count(*) from public.watchlists where last_swept_at is not null) <> 0 then
+    raise exception 'FAIL watchlist sweep defaults';
+  end if;
+  begin
+    update public.watchlists set max_items = 0;
+    raise exception 'FAIL max_items 0 accepted';
+  exception when check_violation then null; end;
+  begin
+    insert into public.runs (source, spend_cap_usd, trigger) values ('tiktok_organic', 1, 'cron');
+    raise exception 'FAIL unknown trigger accepted';
+  exception when check_violation then null; end;
+  raise notice 'PASS app settings, month spend, sweep columns';
+end $$;
+rollback;
+
+begin;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"22222222-2222-2222-2222-222222222222","email":"stranger@example.com"}';
+do $$ declare n int; begin
+  select count(*) into n from public.app_settings;
+  if n <> 0 then raise exception 'FAIL stranger reads settings'; end if;
+  update public.app_settings set sweeps_enabled = false;
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FAIL stranger updated settings'; end if;
+  raise notice 'PASS settings hidden from strangers';
+end $$;
+rollback;
+
+begin;
+set local role anon;
+do $$ begin
+  begin
+    perform 1 from public.app_settings;
+    raise exception 'FAIL anon reads settings';
+  exception when insufficient_privilege then raise notice 'PASS anon denied settings'; end;
+end $$;
+rollback;

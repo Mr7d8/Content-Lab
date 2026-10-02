@@ -122,7 +122,8 @@ ${indent(10)}}`;
   out += `${indent(8)}Relationships: [${rels.length ? `\n${indent(10)}${rels.join(`,\n${indent(10)}`)},\n${indent(8)}` : ''}];\n`;
   out += `${indent(6)}};\n`;
 }
-const fnType = (result) => (result === 'boolean' ? 'boolean' : 'unknown');
+const fnResult = { boolean: 'boolean', numeric: 'number', integer: 'number', bigint: 'number', text: 'string' };
+const fnType = (result) => fnResult[result] ?? 'unknown';
 out += `    };
     Views: { [_ in never]: never };
     Functions: {
