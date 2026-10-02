@@ -67,11 +67,16 @@ export async function loadBoard(supabase: ServerClient, boardId: string): Promis
   const mediaById = new Map((media ?? []).map((m) => [m.item_id, m]));
 
   const now = new Date();
+  // An ad with no cover left (no saved copy, and the source's link expired)
+  // stays off the board; a later scan that sees it again brings it back.
+  const ads = rows
+    .map(({ rank, seenAt, gate, item }) => ({ ...toBoardAd(item, rank, latestClass.get(item.id) ?? null, mediaById.get(item.id) ?? null, now), seenAt, gate }))
+    .filter((ad) => ad.cover !== null);
   return {
     board,
-    ads: rows.map(({ rank, seenAt, gate, item }) => ({ ...toBoardAd(item, rank, latestClass.get(item.id) ?? null, mediaById.get(item.id) ?? null, now), seenAt, gate })),
+    ads,
     cutoff: finished?.started_at ?? null,
-    gate: { pending: rows.filter((r) => r.gate === 'pending').length, rejected: rows.filter((r) => r.gate === 'rejected').length },
+    gate: { pending: ads.filter((a) => a.gate === 'pending').length, rejected: ads.filter((a) => a.gate === 'rejected').length },
     scan: scan ? {
       id: scan.id, status: scan.status, synced: scan.synced_count, requested: scan.items_requested,
       kept: scan.started_at ? rows.filter((r) => Date.parse(r.seenAt) >= Date.parse(scan.started_at as string)).length : 0,

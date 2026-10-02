@@ -5,7 +5,7 @@ import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { glowInk } from '@/lib/ambient';
 import type { BoardData } from '@/lib/board';
-import { boardHeadline, boardStats, byMarket, groupAds, marketCounts, rankAds, scanSummary, splitByScan, type BoardAd, type MarketFilter as Market } from '@/lib/board-view';
+import { boardHeadline, boardStats, byMarket, groupAds, marketCounts, parseSavedView, rankAds, scanSummary, splitByScan, type BoardAd, type MarketFilter as Market, type SavedView } from '@/lib/board-view';
 import { DeepDive } from './deep-dive';
 import { Ambient, useCoverColor } from './glass';
 import { BoardActions, Hero } from './hero';
@@ -61,6 +61,25 @@ function useMarketFilter(): [Market, (m: Market) => void] {
   return [market, choose];
 }
 
+const viewKey = (boardId: string) => `content-lab:board:${boardId}`;
+
+function readView(boardId: string): SavedView | null {
+  try {
+    return parseSavedView(window.localStorage.getItem(viewKey(boardId)));
+  } catch {
+    // Storage can be blocked; the board then opens as new.
+    return null;
+  }
+}
+
+function writeView(boardId: string, view: SavedView) {
+  try {
+    window.localStorage.setItem(viewKey(boardId), JSON.stringify(view));
+  } catch {
+    // Not remembered, still applied.
+  }
+}
+
 export function Board({ data }: { data: BoardData }) {
   const { board } = data;
   const source = board.source;
@@ -90,8 +109,30 @@ export function Board({ data }: { data: BoardData }) {
   // The glow's color, from the selected ad's cover, and the hero text over it.
   const glow = useCoverColor(selected?.cover ?? null);
   const ink = useMemo(() => glowInk(glow), [glow]);
-  const [format, setFormat] = useState<string | null>(null);
+  const [formatChoice, setFormat] = useState<string | null>(null);
+  // A remembered format that no ad has any more filters nothing.
+  const format = formatChoice !== null && formats.some((f) => f.key === formatChoice) ? formatChoice : null;
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+
+  // The board as it was left in this browser: restored once per board after
+  // the first render (storage is browser only), then saved on every change.
+  const [restored, setRestored] = useState<string | null>(null);
+  useEffect(() => {
+    const v = readView(board.id);
+    const known = new Set(data.ads.map((a) => a.id));
+    setSelectedId(v?.selected ?? null);
+    setWithOlder(v?.withOlder ?? false);
+    setShowLeftOut(v?.showLeftOut ?? false);
+    setFormat(v?.format ?? null);
+    setPicked(new Set((v?.picked ?? []).filter((id) => known.has(id))));
+    setRestored(board.id);
+    // Only when the board changes, not on every refresh of its ads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [board.id]);
+  useEffect(() => {
+    if (restored !== board.id) return;
+    writeView(board.id, { selected: selectedId, withOlder, showLeftOut, format: formatChoice, picked: [...picked] });
+  }, [restored, board.id, selectedId, withOlder, showLeftOut, formatChoice, picked]);
   const inspector = useRef<HTMLDivElement>(null);
   // The inspector's video: the frame strip under the map follows and seeks it.
   const video = useRef<HTMLVideoElement | null>(null);
