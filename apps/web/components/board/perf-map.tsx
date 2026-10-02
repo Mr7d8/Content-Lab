@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { axesFor, formatCount, median, spreadPoints, type BoardAd } from '@/lib/board-view';
 import { Cover } from './cover';
+import { Glow, ProgressiveBlur } from './glass';
 
 const AXIS_NAME = { likes: 'Likes', views: 'Views', ctr: 'CTR' } as const;
 
@@ -18,7 +19,8 @@ const fmt = (axis: 'likes' | 'views' | 'ctr', v: number | undefined) => (v === u
 
 type Rect = { x0: number; y0: number; x1: number; y1: number };
 
-// Every ad as its cover, placed by its two numbers. Undecoded ads are gray;
+// Every ad as its cover, placed by its two numbers. Decoded ads wear a blue
+// ring;
 // a format filter dims the rest. Drag across the map to pick ads to decode.
 export function PerfMap({
   ads,
@@ -137,15 +139,15 @@ export function PerfMap({
   const decoded = ads.some((a) => a.decode.status === 'done');
 
   return (
-    <div className="card min-w-0 p-4">
+    <div className="panel min-w-0 p-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="mr-auto">
           <p className="mono text-faint">Performance map</p>
           <p className="mt-0.5 text-sm font-medium">{AXIS_NAME[axes.y]} against {AXIS_NAME[axes.x].toLowerCase()}, every {source === 'tiktok_organic' ? 'post' : 'ad'}</p>
         </div>
         <div className="mono flex items-center gap-3 text-faint">
-          <span className="flex items-center gap-1.5"><span className="h-3 w-2 rounded-[2px] bg-accent" />Decoded</span>
-          <span className="flex items-center gap-1.5"><span className="h-3 w-2 rounded-[2px] bg-[#c7c7cc]" />Not yet</span>
+          <span className="flex items-center gap-1.5"><span className="h-3.5 w-2 rounded-[3px] bg-[linear-gradient(160deg,#ffb36b,#ff5e8a)] shadow-[0_0_0_1.5px_var(--accent)]" />Decoded</span>
+          <span className="flex items-center gap-1.5"><span className="h-3.5 w-2 rounded-[3px] bg-[linear-gradient(160deg,#7fd6ff,#7b8cff)] shadow-[0_0_0_1.5px_#fff,0_1px_3px_rgba(0,0,0,.2)]" />Not yet</span>
           {!touch && <span className="hidden sm:inline">Drag to select</span>}
         </div>
       </div>
@@ -160,7 +162,7 @@ export function PerfMap({
         onPointerCancel={() => setLasso(null)}
       >
         <svg width={W} height={H} className="absolute inset-0" aria-hidden>
-          <rect x={M.left} y={M.top} width={Math.max(0, W - M.left - M.right)} height={Math.max(0, H - M.top - M.bottom)} rx={12} fill="rgba(120,120,128,.045)" />
+          <rect x={M.left} y={M.top} width={Math.max(0, W - M.left - M.right)} height={Math.max(0, H - M.top - M.bottom)} rx={14} fill="rgba(255,255,255,.55)" stroke="rgba(255,255,255,.9)" />
           {geometry.yTicks.map((t) => (
             <g key={`y${t}`}>
               <line x1={M.left} x2={W - M.right} y1={geometry.y(t)} y2={geometry.y(t)} stroke="var(--line)" />
@@ -206,12 +208,12 @@ export function PerfMap({
           const selected = ad.id === selectedId;
           const isPicked = picked.has(ad.id);
           const faded = dimmed(ad);
-          const color = ad.decode.status === 'done';
+          const done = ad.decode.status === 'done';
           return (
             <motion.button
               key={ad.id}
               type="button"
-              aria-label={`${ad.advertiser ?? ad.handle ?? 'Unknown advertiser'}: ${AXIS_NAME[axes.y]} ${fmt(axes.y, ad.metrics[axes.y])}, ${AXIS_NAME[axes.x].toLowerCase()} ${fmt(axes.x, ad.metrics[axes.x])}${color ? ', decoded' : ''}`}
+              aria-label={`${ad.advertiser ?? ad.handle ?? 'Unknown advertiser'}: ${AXIS_NAME[axes.y]} ${fmt(axes.y, ad.metrics[axes.y])}, ${AXIS_NAME[axes.x].toLowerCase()} ${fmt(axes.x, ad.metrics[axes.x])}${done ? ', decoded' : ''}`}
               aria-pressed={selected}
               onClick={() => onSelect(ad.id)}
               onPointerEnter={() => setHovered(ad.id)}
@@ -221,16 +223,18 @@ export function PerfMap({
               initial={{ opacity: 0, scale: 0.4 }}
               animate={{ opacity: faded ? 0.14 : 1, scale: selected ? 1.35 : 1, left: p.x - T.w / 2, top: p.y - T.h / 2 }}
               transition={{ type: 'spring', stiffness: 260, damping: 24, delay: Math.min(i * 0.012, 0.4) }}
-              style={{ width: T.w, height: T.h, zIndex: selected ? 30 : isPicked ? 20 : color ? 10 : 1 }}
-              className={`absolute overflow-hidden rounded-[5px] bg-fill outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+              style={{ width: T.w, height: T.h, zIndex: selected ? 30 : isPicked ? 20 : done ? 10 : 1 }}
+              className={`absolute overflow-hidden rounded-[6px] bg-fill outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                 selected
-                  ? 'shadow-[0_0_0_2px_#fff,0_0_0_3.5px_var(--accent),0_6px_16px_rgba(0,0,0,.25)]'
+                  ? 'shadow-[0_0_0_2px_#fff,0_0_0_4px_var(--accent),0_8px_20px_rgba(10,132,255,.45)]'
                   : isPicked
-                    ? 'shadow-[0_0_0_2px_var(--accent)]'
-                    : 'shadow-[0_0_0_1.5px_#fff,0_2px_6px_rgba(0,0,0,.18)]'
+                    ? 'shadow-[0_0_0_2px_#fff,0_0_0_3.5px_var(--accent)]'
+                    : done
+                      ? 'shadow-[0_0_0_2px_var(--accent),0_3px_8px_rgba(0,0,0,.2)]'
+                      : 'shadow-[0_0_0_1.5px_#fff,0_3px_8px_rgba(0,0,0,.2)]'
               }`}
             >
-              <Cover ad={ad} className={`h-full w-full ${color ? '' : 'opacity-80'}`} gray={!color} />
+              <Cover ad={ad} className="h-full w-full" />
               {ad.decode.status === 'running' && <span className="shimmer absolute inset-0 rounded-none opacity-80" />}
             </motion.button>
           );
@@ -244,17 +248,24 @@ export function PerfMap({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.12 }}
-              className="pointer-events-none absolute z-40 w-[132px] rounded-[12px] bg-card p-1.5 shadow-[var(--shadow)]"
+              className="pointer-events-none absolute isolate z-40 w-[140px]"
               style={{
-                left: hp.x + T.w / 2 + 140 > W ? hp.x - T.w / 2 - 140 : hp.x + T.w / 2 + 8,
-                top: Math.min(Math.max(4, hp.y - 110), H - 230),
+                left: hp.x + T.w / 2 + 150 > W ? hp.x - T.w / 2 - 150 : hp.x + T.w / 2 + 10,
+                top: Math.min(Math.max(4, hp.y - 120), H - 256),
               }}
             >
-              <Cover ad={hoveredAd} className="aspect-[9/16] w-full rounded-[8px]" />
-              <p className="mt-1.5 truncate px-0.5 text-xs font-semibold" dir="auto">{hoveredAd.advertiser ?? hoveredAd.handle ?? 'Unknown advertiser'}</p>
-              <p className="mono px-0.5 pb-0.5 text-sub">
-                {AXIS_NAME[axes.y]} {fmt(axes.y, hoveredAd.metrics[axes.y])} · {fmt(axes.x, hoveredAd.metrics[axes.x])} {AXIS_NAME[axes.x].toLowerCase()}
-              </p>
+              <Glow src={hoveredAd.cover} className="inset-x-3 bottom-[-10px] top-6 h-full w-[calc(100%-24px)]" />
+              <div className="relative aspect-[9/16] w-full overflow-hidden rounded-[18px] bg-fill shadow-[0_0_0_1px_rgba(255,255,255,.6)]">
+                <Cover ad={hoveredAd} className="absolute inset-0 h-full w-full" />
+                <ProgressiveBlur className="top-[50%]" steps={3} max={14} />
+                <span className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/60 to-transparent" />
+                <div className="absolute inset-x-2.5 bottom-2.5 text-white">
+                  <p className="truncate text-[12.5px] font-semibold" dir="auto">{hoveredAd.advertiser ?? hoveredAd.handle ?? 'Unknown advertiser'}</p>
+                  <p className="mono mt-0.5 text-[9.5px] text-white/80">
+                    {AXIS_NAME[axes.y]} {fmt(axes.y, hoveredAd.metrics[axes.y])} · {fmt(axes.x, hoveredAd.metrics[axes.x])} {AXIS_NAME[axes.x].toLowerCase()}
+                  </p>
+                </div>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -273,7 +284,7 @@ export function PerfMap({
         )}
       </div>
       <p className="mt-2 text-xs text-faint">
-        {decoded ? 'Color covers are decoded. ' : 'Covers turn to color once decoded. '}
+        {decoded ? 'A blue ring marks a decoded ad. ' : 'Decoded ads get a blue ring. '}
         {missing > 0 ? `${missing} ${missing === 1 ? 'ad has' : 'ads have'} no numbers and stay off the map.` : ''}
       </p>
     </div>

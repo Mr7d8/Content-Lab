@@ -10,6 +10,7 @@ import {
   groupAds,
   lengthBucket,
   rankAds,
+  splitByScan,
   spreadPoints,
   toBoardAd,
   type BoardAd,
@@ -142,5 +143,20 @@ describe('spreadPoints', () => {
     expect(spreadPoints([{ id: 'a', x: 10, y: 10 }, { id: 'b', x: 300, y: 300 }], 20, 40, bounds)).toEqual([{ id: 'a', x: 10, y: 10 }, { id: 'b', x: 300, y: 300 }]);
     const edge = spreadPoints([{ id: 'a', x: 0, y: 250 }, { id: 'b', x: 1, y: 250 }], 20, 40, bounds);
     expect(edge.every((p) => p.x >= 0 && p.x <= 500)).toBe(true);
+  });
+});
+
+describe('splitByScan', () => {
+  const at = (id: string, seenAt: string | null) => ad(id, { seenAt });
+
+  it('keeps ads from the latest finished scan and sets older ones apart', () => {
+    const { current, older } = splitByScan([at('new', '2026-10-02T11:05:00Z'), at('old', '2026-09-20T05:00:00Z'), at('none', null)], '2026-10-02T11:00:00Z');
+    expect(current.map((a) => a.id)).toEqual(['new']);
+    expect(older.map((a) => a.id)).toEqual(['old', 'none']);
+  });
+
+  it('shows everything when nothing was scanned yet or nothing is current', () => {
+    expect(splitByScan([at('a', null)], null)).toEqual({ current: [at('a', null)], older: [] });
+    expect(splitByScan([at('a', '2026-09-01T00:00:00Z')], '2026-10-02T11:00:00Z').current.map((a) => a.id)).toEqual(['a']);
   });
 });

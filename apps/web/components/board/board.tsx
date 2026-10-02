@@ -4,7 +4,8 @@ import { DECODE_ESTIMATE_USD } from '@content-lab/core';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { BoardData } from '@/lib/board';
-import { boardHeadline, boardStats, groupAds, rankAds, type BoardAd } from '@/lib/board-view';
+import { boardHeadline, boardStats, groupAds, rankAds, splitByScan, type BoardAd } from '@/lib/board-view';
+import { Ambient } from './glass';
 import { Hero } from './hero';
 import { Inspector } from './inspector';
 import { Kpis } from './kpis';
@@ -39,7 +40,11 @@ export function Board({ data }: { data: BoardData }) {
   const { view: scan, start: startScan } = useScan(board.id, data.scan);
   const queue = useDecodeQueue();
   const { active, errors, finished } = queue;
-  const ads = useMemo(() => rankAds(data.ads.map((a) => withQueue(a, { active, errors, finished })), source), [data.ads, active, errors, finished, source]);
+  // The latest scan by default; ads from earlier scans on request.
+  const [withOlder, setWithOlder] = useState(false);
+  const { current, older } = useMemo(() => splitByScan(data.ads, data.cutoff), [data.ads, data.cutoff]);
+  const shown = withOlder ? data.ads : current;
+  const ads = useMemo(() => rankAds(shown.map((a) => withQueue(a, { active, errors, finished })), source), [shown, active, errors, finished, source]);
   const stats = boardStats(ads, source);
   const formats = useMemo(() => groupAds(ads, source, 'format'), [ads, source]);
 
@@ -66,8 +71,9 @@ export function Board({ data }: { data: BoardData }) {
 
   return (
     <MotionConfig reducedMotion="user">
+      <Ambient src={selected?.cover ?? null} />
       <TopBar boards={data.boards} currentId={board.id} spend={data.spend} onNew={() => setCreating(true)} />
-      <main className="mx-auto max-w-[1440px] px-4 pb-32 sm:px-6">
+      <main className="relative z-[1] mx-auto max-w-[1440px] px-4 pb-32 sm:px-6">
         <Hero
           board={board}
           headline={boardHeadline(ads, source)}
@@ -76,14 +82,21 @@ export function Board({ data }: { data: BoardData }) {
           onScan={startScan}
           toDecode={topIds.length}
           onDecodeTop={decodeTop}
+          top={ads.slice(0, 3)}
+          onSelect={select}
         />
-        <Kpis stats={stats} source={source} decoding={queue.active.size} />
+        <Kpis stats={stats} source={source} decoding={queue.active.size} cover={ads[0]?.cover ?? null} />
 
         <section className="mt-12" aria-labelledby="overview-title">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="mono text-faint">Overview</p>
               <h2 id="overview-title" className="mt-1 text-2xl font-semibold tracking-tight">Every ad, in one picture</h2>
+              {older.length > 0 && (
+                <button type="button" className={`chip mt-2 ${withOlder ? 'active' : ''}`} onClick={() => setWithOlder((w) => !w)} aria-pressed={withOlder}>
+                  {withOlder ? `Showing ${older.length} from earlier scans` : `+ ${older.length} from earlier scans`}
+                </button>
+              )}
             </div>
             <div className="no-scrollbar -mx-4 flex max-w-[calc(100%+32px)] gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:max-w-full sm:flex-wrap sm:px-0" role="group" aria-label="Filter by format">
               {formats.length ? (
@@ -123,7 +136,7 @@ export function Board({ data }: { data: BoardData }) {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 40, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 400, damping: 34 }}
-            className="glass fixed bottom-4 left-1/2 z-50 flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-3 rounded-full py-2 pl-4 pr-2 text-sm"
+            className="liquid fixed bottom-4 left-1/2 z-50 flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-3 rounded-full py-2 pl-4 pr-2 text-sm"
             role="status"
           >
             {picked.size > 0 ? (

@@ -97,7 +97,7 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/25 p-3 backdrop-blur-[2px] sm:items-center"
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/20 p-3 backdrop-blur-md sm:items-center"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -112,7 +112,7 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 24, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-            className="max-h-[calc(100dvh-24px)] w-full max-w-[560px] space-y-5 overflow-y-auto rounded-[22px] bg-card p-5 shadow-[var(--shadow)] sm:p-6"
+            className="liquid max-h-[calc(100dvh-24px)] w-full max-w-[560px] space-y-5 overflow-y-auto rounded-[28px] !bg-white/[.93] p-5 sm:p-6"
           >
             <div className="flex items-start justify-between gap-4">
               <div>

@@ -49,7 +49,7 @@ export function Popover({
             exit={{ opacity: 0, y: -4, scale: 0.98 }}
             transition={{ duration: 0.14 }}
             style={{ width }}
-            className={`absolute top-[calc(100%+8px)] z-50 max-w-[calc(100vw-24px)] rounded-[16px] bg-card p-2 shadow-[var(--shadow),0_0_0_1px_var(--line)] ${align === 'right' ? 'right-0' : 'left-0'}`}
+            className={`liquid absolute top-[calc(100%+8px)] z-50 max-w-[calc(100vw-24px)] rounded-[20px] !bg-white/[.93] p-2 ${align === 'right' ? 'right-0' : 'left-0'}`}
           >
             {children(() => setOpen(false))}
           </motion.div>

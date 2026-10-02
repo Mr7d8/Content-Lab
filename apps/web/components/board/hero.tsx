@@ -4,7 +4,10 @@ import { DECODE_ESTIMATE_USD, type Tables } from '@content-lab/core';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { deleteBoard, updateBoard } from '@/app/(app)/b/actions';
-import { agoText, boardEyebrow } from '@/lib/board-view';
+import { motion } from 'motion/react';
+import { agoText, axesFor, boardEyebrow, formatCount, type BoardAd } from '@/lib/board-view';
+import { Cover } from './cover';
+import { Glow } from './glass';
 import { CADENCES, PERIODS, scheduleText } from '@/lib/watchlists';
 import { Popover } from './popover';
 import type { ScanView } from './use-scan';
@@ -107,6 +110,46 @@ function ScanLine({ board, scan, count }: { board: Tables<'watchlists'>; scan: S
   );
 }
 
+// The three best ads, fanned like cards, next to the title.
+function CoverStack({ ads, source, onSelect }: { ads: BoardAd[]; source: string; onSelect: (id: string) => void }) {
+  const { rank } = axesFor(source);
+  const place = [
+    { x: 0, y: 0, r: 0, z: 30 },
+    { x: -64, y: 12, r: -10, z: 20 },
+    { x: 64, y: 12, r: 10, z: 10 },
+  ];
+  if (!ads.length) return null;
+  return (
+    <div className="relative isolate mx-auto hidden h-[178px] w-[250px] lg:block" aria-label="Top 3 ads">
+      <Glow src={ads[0]?.cover ?? null} className="left-[70px] top-8 h-[150px] w-[110px]" />
+      {ads.slice(0, 3).map((ad, i) => {
+        const p = place[i] as (typeof place)[number];
+        return (
+          <motion.button
+            key={ad.id}
+            type="button"
+            onClick={() => onSelect(ad.id)}
+            aria-label={`#${i + 1} ${ad.advertiser ?? ad.handle ?? 'ad'}`}
+            initial={{ opacity: 0, x: 0, y: 20, rotate: 0 }}
+            animate={{ opacity: 1, x: p.x, y: p.y, rotate: p.r }}
+            whileHover={{ y: p.y - 8, scale: 1.04 }}
+            transition={{ type: 'spring', stiffness: 220, damping: 22, delay: 0.08 * i }}
+            style={{ zIndex: p.z }}
+            className="absolute left-[79px] top-0 h-[164px] w-[92px] overflow-hidden rounded-[18px] bg-fill shadow-[0_0_0_2px_#fff,0_14px_30px_-10px_rgba(0,0,0,.4)]"
+          >
+            <Cover ad={ad} className="absolute inset-0 h-full w-full" />
+            <span className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/60 to-transparent" />
+            <span className="liquid-dark mono absolute left-1.5 top-1.5 rounded-full px-1.5 py-0.5 text-[9.5px]">#{i + 1}</span>
+            <span className="absolute inset-x-2 bottom-1.5 text-left text-[12px] font-semibold tabular-nums text-white">
+              {rank === 'ctr' ? `${ad.metrics.ctr?.toFixed(2) ?? '–'} CTR` : `${formatCount(ad.metrics.views)} views`}
+            </span>
+          </motion.button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Hero({
   board,
   headline,
@@ -115,7 +158,11 @@ export function Hero({
   onScan,
   toDecode,
   onDecodeTop,
+  top,
+  onSelect,
 }: {
+  top: BoardAd[];
+  onSelect: (id: string) => void;
   board: Tables<'watchlists'>;
   headline: string;
   count: number;
@@ -146,6 +193,8 @@ export function Hero({
           <ScanLine board={board} scan={scan} count={count} />
         </div>
       </div>
+      <div className="flex flex-col items-start gap-6 lg:items-center">
+      <CoverStack ads={top} source={board.source} onSelect={onSelect} />
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className="btn-primary !px-5 !py-2.5" onClick={onScan} disabled={scanning}>
           {scanning ? (
@@ -171,6 +220,7 @@ export function Hero({
           {toDecode === 10 ? 'Decode top 10' : toDecode ? `Decode ${toDecode} more` : 'Top 10 decoded'}
         </button>
         <BoardMenu board={board} />
+      </div>
       </div>
     </section>
   );

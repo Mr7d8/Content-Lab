@@ -135,7 +135,7 @@ function SpendChip({ spend }: { spend: { month: number; cap: number; sweepsEnabl
 export function TopBar({ boards, currentId, spend, onNew }: { boards: BoardSummary[]; currentId: string | null; spend: { month: number; cap: number; sweepsEnabled: boolean } | null; onNew: () => void }) {
   return (
     <header className="sticky top-0 z-40 px-3 pt-3 sm:px-5">
-      <div className="glass mx-auto flex max-w-[1440px] items-center gap-1.5 rounded-full py-1.5 pl-2 pr-1.5">
+      <div className="liquid mx-auto flex max-w-[1440px] items-center gap-1.5 rounded-full py-1.5 pl-2 pr-1.5">
         <Link href="/b" className="flex items-center gap-2 rounded-full pr-1 text-[15px] font-semibold tracking-tight" aria-label="Content Lab">
           <Mark />
           <span className="hidden md:inline">Content Lab</span>

@@ -7,7 +7,7 @@ type Stats = { ads: number; decoded: number; formats: number; advertisers: numbe
 
 function Kpi({ label, value, note }: { label: string; value: string; note: string }) {
   return (
-    <div className="card flex min-w-0 flex-col justify-between gap-3 p-4">
+    <div className="panel flex min-w-0 flex-col justify-between gap-3 p-4">
       <p className="mono text-faint">{label}</p>
       <div>
         <p className="text-[30px] font-semibold leading-none tracking-[-0.03em] tabular-nums">{value}</p>
@@ -17,12 +17,16 @@ function Kpi({ label, value, note }: { label: string; value: string; note: strin
   );
 }
 
-export function Kpis({ stats, source, decoding }: { stats: Stats; source: string; decoding: number }) {
+export function Kpis({ stats, source, decoding, cover }: { stats: Stats; source: string; decoding: number; cover: string | null }) {
   const organic = source === 'tiktok_organic';
   const share = stats.ads ? stats.decoded / stats.ads : 0;
   return (
     <section aria-label="Board numbers" className="grid grid-cols-2 gap-3 md:grid-cols-5">
-      <div className="tile-dark col-span-2 flex flex-col justify-between gap-4 p-4 md:col-span-1">
+      <div className="tile-dark relative isolate col-span-2 flex flex-col justify-between gap-4 overflow-hidden p-4 md:col-span-1">
+        {cover && (
+          <div aria-hidden className="absolute inset-[-30%] -z-10 opacity-60" style={{ backgroundImage: `url("${cover}")`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'blur(36px) saturate(1.8)' }} />
+        )}
+        <div aria-hidden className="absolute inset-0 -z-10 bg-[linear-gradient(160deg,rgba(29,29,31,.55),rgba(29,29,31,.85))]" />
         <div className="flex items-center justify-between">
           <p className="mono text-white/55">Decoded</p>
           {decoding > 0 && (

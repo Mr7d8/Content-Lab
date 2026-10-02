@@ -25,6 +25,8 @@ export type BoardAd = {
   labels: AdLabels | null;
   breakdown: Breakdown | null;
   transcript: string | null;
+  // When a scan last returned this ad for the board.
+  seenAt?: string | null;
 };
 
 type ItemRow = Tables<'items'>;
@@ -248,4 +250,15 @@ export function spreadPoints(
     if (!moved) break;
   }
   return out;
+}
+
+// Splits the board into ads from the latest finished scan (and any scan
+// running since) and older ones. With no finished scan, every ad is current.
+export function splitByScan(ads: BoardAd[], cutoff: string | null): { current: BoardAd[]; older: BoardAd[] } {
+  if (!cutoff) return { current: ads, older: [] };
+  const from = Date.parse(cutoff);
+  const current: BoardAd[] = [];
+  const older: BoardAd[] = [];
+  for (const ad of ads) (ad.seenAt && Date.parse(ad.seenAt) >= from ? current : older).push(ad);
+  return current.length ? { current, older } : { current: ads, older: [] };
 }

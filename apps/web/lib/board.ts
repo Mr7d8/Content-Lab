@@ -11,6 +11,9 @@ export type BoardData = {
   board: Tables<'watchlists'>;
   ads: BoardAd[];
   scan: ScanState | null;
+  // Ads last seen before this (the start of the latest finished scan) are
+  // from earlier scans; the board hides them unless asked.
+  cutoff: string | null;
   boards: BoardSummary[];
   spend: { month: number; cap: number; sweepsEnabled: boolean };
 };
@@ -33,18 +36,20 @@ export async function defaultBoardId(supabase: ServerClient): Promise<string | n
 }
 
 export async function loadBoard(supabase: ServerClient, boardId: string): Promise<BoardData | null> {
-  const [{ data: board }, { data: members }, { data: scan }, boards, { data: settings }, { data: spend }] = await Promise.all([
+  const [{ data: board }, { data: members }, { data: scan }, { data: finished }, boards, { data: settings }, { data: spend }] = await Promise.all([
     supabase.from('watchlists').select('*').eq('id', boardId).maybeSingle(),
-    supabase.from('board_items').select('rank, item:items(*)').eq('watchlist_id', boardId),
+    supabase.from('board_items').select('rank, last_seen_at, item:items(*)').eq('watchlist_id', boardId),
     supabase.from('runs').select('id, status, synced_count, error, started_at, finished_at')
       .eq('watchlist_id', boardId).eq('kind', 'scan').order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    supabase.from('runs').select('started_at')
+      .eq('watchlist_id', boardId).eq('kind', 'scan').eq('status', 'completed').order('created_at', { ascending: false }).limit(1).maybeSingle(),
     listBoards(supabase),
     supabase.from('app_settings').select('monthly_spend_cap_usd, sweeps_enabled').maybeSingle(),
     supabase.rpc('month_spend_usd'),
   ]);
   if (!board) return null;
 
-  const rows = (members ?? []).flatMap((m) => (m.item ? [{ rank: m.rank, item: m.item as unknown as Tables<'items'> }] : []));
+  const rows = (members ?? []).flatMap((m) => (m.item ? [{ rank: m.rank, seenAt: m.last_seen_at, item: m.item as unknown as Tables<'items'> }] : []));
   const ids = rows.map((r) => r.item.id);
   const [{ data: classes }, { data: media }] = ids.length
     ? await Promise.all([
@@ -59,7 +64,8 @@ export async function loadBoard(supabase: ServerClient, boardId: string): Promis
   const now = new Date();
   return {
     board,
-    ads: rows.map(({ rank, item }) => toBoardAd(item, rank, latestClass.get(item.id) ?? null, mediaById.get(item.id) ?? null, now)),
+    ads: rows.map(({ rank, seenAt, item }) => ({ ...toBoardAd(item, rank, latestClass.get(item.id) ?? null, mediaById.get(item.id) ?? null, now), seenAt })),
+    cutoff: finished?.started_at ?? null,
     scan: scan ? { id: scan.id, status: scan.status, synced: scan.synced_count, error: scan.error, startedAt: scan.started_at, finishedAt: scan.finished_at } : null,
     boards,
     spend: {

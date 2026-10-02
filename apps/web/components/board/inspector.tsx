@@ -6,44 +6,170 @@ import { useRef, useState } from 'react';
 import { formatCount, type BoardAd } from '@/lib/board-view';
 import { BEAT_COLORS } from '@/lib/colors';
 import { Cover } from './cover';
+import { Glow, ProgressiveBlur } from './glass';
 
 const secs = (s: number) => (s < 10 ? `0:0${Math.floor(s)}` : s < 60 ? `0:${Math.floor(s)}` : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`);
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-[10px] bg-[rgba(120,120,128,.07)] px-2.5 py-2">
-      <p className="mono text-[9.5px] text-faint">{label}</p>
-      <p className="mt-0.5 text-[15px] font-semibold tabular-nums tracking-tight">{value}</p>
-    </div>
-  );
+const Sparkle = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 14 14" aria-hidden><path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7 5.6 5.6Z" fill="currentColor" /></svg>
+);
+
+function statsFor(ad: BoardAd, source: string): { label: string; value: string }[] {
+  const m = ad.metrics;
+  const length = { label: 'Length', value: ad.durationS ? `${Math.round(ad.durationS)} s` : '–' };
+  return source === 'tiktok_organic'
+    ? [{ label: 'Views', value: formatCount(m.views) }, { label: 'Likes', value: formatCount(m.likes) }, length]
+    : [{ label: 'CTR', value: m.ctr === undefined ? '–' : m.ctr.toFixed(2) }, { label: 'Likes', value: formatCount(m.likes) }, length];
 }
 
-function Media({ ad, video }: { ad: BoardAd; video: React.RefObject<HTMLVideoElement | null> }) {
+// The ad as a full-bleed card: video or cover, with name, caption, numbers and
+// the main action on a frosted band at the bottom.
+function MediaCard({
+  ad,
+  rank,
+  total,
+  source,
+  video,
+  onDecode,
+}: {
+  ad: BoardAd;
+  rank: number;
+  total: number;
+  source: string;
+  video: React.RefObject<HTMLVideoElement | null>;
+  onDecode: () => void;
+}) {
   const [failed, setFailed] = useState<string | null>(null);
-  const playable = ad.video && failed !== ad.video;
+  const [playing, setPlaying] = useState(false);
+  const [muted, setMuted] = useState(true);
+  const playable = !!ad.video && failed !== ad.video;
+  const toggle = () => {
+    const v = video.current;
+    if (!v) return;
+    if (v.paused) void v.play().catch(() => undefined);
+    else v.pause();
+  };
+  const status = ad.decode.status;
+  const name = ad.advertiser ?? (ad.handle ? `@${ad.handle}` : 'Unknown advertiser');
+
   return (
-    <div className="relative aspect-[9/16] w-full overflow-hidden rounded-[14px] bg-[#111]">
-      {playable ? (
-        <video
-          ref={video}
-          key={ad.id}
-          src={ad.video as string}
-          poster={ad.cover ?? undefined}
-          controls
-          playsInline
-          loop
-          preload="metadata"
-          onError={() => setFailed(ad.video)}
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        <>
-          <Cover ad={ad} className="h-full w-full" />
-          <p className="absolute inset-x-2 bottom-2 rounded-[8px] bg-black/55 px-2 py-1.5 text-[11px] leading-snug text-white backdrop-blur-sm">
-            The video link expired. Scan again to refresh it; decoding fetches its own copy.
+    <div className="relative isolate px-1 pb-3">
+      <Glow src={ad.cover} className="left-8 top-12 h-[calc(100%-40px)] w-[calc(100%-64px)]" />
+      <div className="relative aspect-[9/14] max-h-[74vh] w-full overflow-hidden rounded-[30px] bg-[#111] shadow-[0_0_0_1px_rgba(255,255,255,.25),0_28px_50px_-24px_rgba(0,0,0,.55)]">
+        {playable ? (
+          <video
+            ref={video}
+            key={ad.id}
+            src={ad.video as string}
+            poster={ad.cover ?? undefined}
+            autoPlay
+            muted={muted}
+            loop
+            playsInline
+            preload="metadata"
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onError={() => setFailed(ad.video)}
+            onClick={toggle}
+            className="absolute inset-0 h-full w-full cursor-pointer object-cover"
+          />
+        ) : (
+          <Cover ad={ad} className="absolute inset-0 h-full w-full" />
+        )}
+        <ProgressiveBlur className="top-[40%]" steps={4} max={28} />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[64%] bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+
+        <div className="absolute inset-x-3 top-3 flex items-start justify-between gap-2">
+          <span className="liquid-dark mono rounded-full px-2.5 py-1 text-[10px] tabular-nums">#{rank} of {total}</span>
+          <div className="flex items-center gap-1.5">
+            {status === 'running' && (
+              <span className="liquid-dark mono flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px]">
+                <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-white" /> Decoding
+              </span>
+            )}
+            {playable && (
+              <button type="button" onClick={() => setMuted((m) => !m)} aria-label={muted ? 'Sound on' : 'Sound off'} className="liquid-dark grid h-8 w-8 place-items-center rounded-full">
+                {muted ? (
+                  <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden><path d="M2 6h2.5L8 3v10L4.5 10H2Z" fill="currentColor" /><path d="m11 6 4 4m0-4-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden><path d="M2 6h2.5L8 3v10L4.5 10H2Z" fill="currentColor" /><path d="M10.5 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6.3 6.3 0 0 1 0 9" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" /></svg>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+        {!playable && (
+          <p className="liquid-dark absolute inset-x-3 top-14 rounded-[14px] px-3 py-2 text-[11.5px] leading-snug">
+            The video link expired. Scan again to play it here; decoding fetches its own copy.
           </p>
-        </>
-      )}
+        )}
+        <AnimatePresence>
+          {playable && !playing && (
+            <motion.button
+              type="button"
+              aria-label="Play"
+              onClick={toggle}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              className="liquid-dark absolute left-1/2 top-[34%] grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full"
+            >
+              <svg width="18" height="18" viewBox="0 0 12 12" aria-hidden><path d="M3.5 1.8v8.4L10.5 6Z" fill="currentColor" /></svg>
+            </motion.button>
+          )}
+        </AnimatePresence>
+
+        <div className="absolute inset-x-0 bottom-0 space-y-3.5 p-5 text-white">
+          <div>
+            <p className="flex items-center gap-2 text-[21px] font-semibold leading-tight tracking-tight" dir="auto">
+              <span className="truncate">{name}</span>
+              {status === 'done' && (
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-accent shadow-[0_0_0_2px_rgba(255,255,255,.25)]" aria-label="Decoded">
+                  <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden><path d="m2.5 6.2 2.3 2.3 4.7-5" stroke="#fff" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </span>
+              )}
+            </p>
+            {ad.caption && <p className="mt-1.5 line-clamp-2 text-[13.5px] leading-snug text-white/80" dir="auto">{ad.caption}</p>}
+          </div>
+          <div className="grid grid-cols-3 divide-x divide-white/20 text-center">
+            {statsFor(ad, source).map((st) => (
+              <div key={st.label} className="px-1">
+                <p className="text-[17px] font-semibold tabular-nums tracking-tight">{st.value}</p>
+                <p className="mt-0.5 text-[11.5px] text-white/65">{st.label}</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-2.5">
+            {status === 'done' ? (
+              <a href={ad.sourceUrl} target="_blank" rel="noreferrer" className="btn-light flex-1">
+                Open in {sourceLabel(ad.source)}
+                <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden><path d="M4 2h6v6M10 2 3 9" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </a>
+            ) : (
+              <button type="button" className="btn-light flex-1" onClick={onDecode} disabled={status === 'running'}>
+                {status === 'running' ? (
+                  <>
+                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-ink/20 border-t-ink" /> Decoding
+                  </>
+                ) : (
+                  <>
+                    <Sparkle /> {status === 'failed' ? 'Try again' : 'Decode this ad'}
+                  </>
+                )}
+              </button>
+            )}
+            {status === 'done' ? (
+              <button type="button" onClick={onDecode} className="liquid-dark grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full" aria-label="Decode again" title="Decode again">
+                <svg width="16" height="16" viewBox="0 0 14 14" aria-hidden><path d="M12 7a5 5 0 1 1-1.5-3.6M12 2v2.6H9.4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </button>
+            ) : (
+              <a href={ad.sourceUrl} target="_blank" rel="noreferrer" className="liquid-dark grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full" aria-label={`Open in ${sourceLabel(ad.source)}`} title={`Open in ${sourceLabel(ad.source)}`}>
+                <svg width="14" height="14" viewBox="0 0 12 12" aria-hidden><path d="M4 2h6v6M10 2 3 9" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -74,7 +200,7 @@ function Beats({ ad, onSeek }: { ad: BoardAd; onSeek: (s: number) => void }) {
       <ol className="space-y-0.5">
         {beats.map((b, i) => (
           <li key={i}>
-            <button type="button" onClick={() => onSeek(b.start)} className="group flex w-full gap-3 rounded-[10px] px-2 py-1.5 text-left transition-colors hover:bg-[var(--fill)]">
+            <button type="button" onClick={() => onSeek(b.start)} className="group flex w-full gap-3 rounded-[12px] px-2 py-1.5 text-left transition-colors hover:bg-white/70">
               <span className="mono w-9 shrink-0 pt-0.5 tabular-nums text-faint group-hover:text-accent">{secs(b.start)}</span>
               <span className="min-w-0 text-[13px] leading-snug">
                 <span className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle" style={{ background: BEAT_COLORS[b.role as BeatRole] ?? BEAT_COLORS.other }} />
@@ -88,7 +214,7 @@ function Beats({ ad, onSeek }: { ad: BoardAd; onSeek: (s: number) => void }) {
   );
 }
 
-function Decoded({ ad, onSeek, onDecode }: { ad: BoardAd; onSeek: (s: number) => void; onDecode: () => void }) {
+function Decoded({ ad, onSeek }: { ad: BoardAd; onSeek: (s: number) => void }) {
   const b = ad.breakdown;
   const chips = [ad.labels?.format, ad.labels?.hookType, ad.labels?.structure].filter((v): v is string => !!v);
   return (
@@ -96,7 +222,7 @@ function Decoded({ ad, onSeek, onDecode }: { ad: BoardAd; onSeek: (s: number) =>
       {chips.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {chips.map((c, i) => (
-            <span key={c} className={`chip !py-1 !text-[11.5px] ${i === 0 ? '!bg-ink !text-white' : ''}`}>{labelText(c)}</span>
+            <span key={c} className={`chip !py-1 !text-[11.5px] ${i === 0 ? '!bg-accent !text-white' : ''}`}>{labelText(c)}</span>
           ))}
           {ad.labels?.language && <span className="chip !py-1 !text-[11.5px] uppercase">{ad.labels.language}</span>}
         </div>
@@ -104,7 +230,7 @@ function Decoded({ ad, onSeek, onDecode }: { ad: BoardAd; onSeek: (s: number) =>
       {b ? (
         <>
           <p className="text-[14px] leading-relaxed" dir="auto">{b.summary}</p>
-          <div className="space-y-1.5 rounded-[12px] bg-[rgba(120,120,128,.07)] p-3">
+          <div className="space-y-1.5 rounded-[16px] bg-white/60 p-3 shadow-[var(--glass-rim)]">
             <p className="mono text-faint">Hook</p>
             <p className="text-[15px] font-semibold leading-snug" dir="auto">“{b.hook.text}”</p>
             <p className="text-[13px] text-sub" dir="auto">{b.hook.visual}</p>
@@ -112,17 +238,17 @@ function Decoded({ ad, onSeek, onDecode }: { ad: BoardAd; onSeek: (s: number) =>
           <Beats ad={ad} onSeek={onSeek} />
           {(b.offer || b.cta) && (
             <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-[12px] bg-[rgba(120,120,128,.07)] p-3">
+              <div className="rounded-[16px] bg-white/60 p-3 shadow-[var(--glass-rim)]">
                 <p className="mono text-faint">Offer</p>
                 <p className="mt-1 text-[13px] leading-snug" dir="auto">{b.offer ?? 'None stated'}</p>
               </div>
-              <div className="rounded-[12px] bg-[rgba(120,120,128,.07)] p-3">
+              <div className="rounded-[16px] bg-white/60 p-3 shadow-[var(--glass-rim)]">
                 <p className="mono text-faint">Call to action</p>
                 <p className="mt-1 text-[13px] leading-snug" dir="auto">{b.cta ?? 'None stated'}</p>
               </div>
             </div>
           )}
-          <div className="rounded-[12px] bg-accent/[.08] p-3">
+          <div className="rounded-[16px] bg-[linear-gradient(135deg,rgba(10,132,255,.12),rgba(94,92,230,.12))] p-3 shadow-[var(--glass-rim)]">
             <p className="mono text-accent">Why it works</p>
             <p className="mt-1 text-[13.5px] leading-relaxed" dir="auto">{b.why_it_works}</p>
           </div>
@@ -138,7 +264,6 @@ function Decoded({ ad, onSeek, onDecode }: { ad: BoardAd; onSeek: (s: number) =>
           <p className="mt-2 text-[13px] leading-relaxed text-sub" dir="auto">{ad.transcript}</p>
         </details>
       )}
-      <button type="button" className="mono text-faint hover:text-accent" onClick={onDecode}>Decode again</button>
     </div>
   );
 }
@@ -147,7 +272,7 @@ export function Inspector({ ad, rank, total, source, onDecode }: { ad: BoardAd |
   const video = useRef<HTMLVideoElement | null>(null);
   if (!ad) {
     return (
-      <aside className="card grid min-h-[300px] place-items-center p-6 text-center">
+      <aside className="panel grid min-h-[300px] place-items-center p-6 text-center">
         <p className="text-sm text-sub">Pick an ad on the map or in the list to see it here.</p>
       </aside>
     );
@@ -158,57 +283,20 @@ export function Inspector({ ad, rank, total, source, onDecode }: { ad: BoardAd |
     v.currentTime = s;
     void v.play().catch(() => undefined);
   };
-  const organic = source === 'tiktok_organic';
-  const m = ad.metrics;
-  const stats: { label: string; value: string }[] = organic
-    ? [
-        { label: 'Views', value: formatCount(m.views) },
-        { label: 'Likes', value: formatCount(m.likes) },
-        { label: 'Shares', value: formatCount(m.shares) },
-        { label: 'Length', value: ad.durationS ? `${Math.round(ad.durationS)} s` : '–' },
-      ]
-    : [
-        { label: 'CTR', value: m.ctr === undefined ? '–' : m.ctr.toFixed(2) },
-        { label: 'Likes', value: formatCount(m.likes) },
-        { label: 'Budget', value: m.costIndex === undefined ? '–' : ['Low', 'Medium', 'High'][m.costIndex] ?? String(m.costIndex) },
-        { label: 'Length', value: ad.durationS ? `${Math.round(ad.durationS)} s` : '–' },
-      ];
 
   return (
-    <aside aria-label="Inspector" className="card min-w-0 p-4 lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto">
-      <div className="mb-3 flex items-center justify-between">
-        <p className="mono text-faint">Inspector</p>
-        <p className="mono tabular-nums text-faint">#{rank} of {total}</p>
-      </div>
+    <aside aria-label="Inspector" className="no-scrollbar min-w-0 lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto">
       <AnimatePresence mode="wait" initial={false}>
-        <motion.div key={ad.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.16 }} className="space-y-5">
-          <div className="grid grid-cols-[minmax(0,42%)_minmax(0,1fr)] gap-3">
-            <Media ad={ad} video={video} />
-            <div className="flex min-w-0 flex-col gap-2.5">
-              <div className="min-w-0">
-                <p className="truncate text-[15px] font-semibold tracking-tight" dir="auto">{ad.advertiser ?? (ad.handle ? `@${ad.handle}` : 'Unknown advertiser')}</p>
-                {ad.caption && <p className="mt-0.5 line-clamp-4 text-[12.5px] leading-snug text-sub" dir="auto">{ad.caption}</p>}
-              </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                {stats.map((s) => <Stat key={s.label} {...s} />)}
-              </div>
-              <a href={ad.sourceUrl} target="_blank" rel="noreferrer" className="mono mt-auto text-accent hover:underline">
-                Open in {sourceLabel(ad.source)} ↗
-              </a>
-            </div>
-          </div>
+        <motion.div key={ad.id} initial={{ opacity: 0, y: 8, scale: 0.99 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }} className="space-y-3">
+          <MediaCard ad={ad} rank={rank} total={total} source={source} video={video} onDecode={() => onDecode(ad.id)} />
 
-          <div className="border-t border-[var(--line)] pt-4">
+          <div className="panel p-4">
             {ad.decode.status === 'none' && (
-              <div className="space-y-3 rounded-[14px] bg-[rgba(120,120,128,.06)] p-4">
-                <p className="text-[14px] font-semibold tracking-tight">Not decoded yet</p>
+              <div className="space-y-1.5">
+                <p className="mono text-faint">Not decoded yet</p>
                 <p className="text-[13px] leading-snug text-sub">
                   One pass over the video: the hook, each script beat, the offer and why it works. About ${DECODE_ESTIMATE_USD.toFixed(2)} and half a minute.
                 </p>
-                <button type="button" className="btn-primary" onClick={() => onDecode(ad.id)}>
-                  <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden><path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7 5.6 5.6Z" fill="currentColor" /></svg>
-                  Decode this ad
-                </button>
               </div>
             )}
             {ad.decode.status === 'running' && (
@@ -224,13 +312,12 @@ export function Inspector({ ad, rank, total, source, onDecode }: { ad: BoardAd |
               </div>
             )}
             {ad.decode.status === 'failed' && (
-              <div className="space-y-3 rounded-[14px] bg-red/[.07] p-4">
+              <div className="space-y-1.5" role="alert">
                 <p className="text-[14px] font-semibold text-red">The decode did not finish</p>
                 <p className="text-[13px] leading-snug text-sub">{ad.decode.error}</p>
-                <button type="button" className="btn-secondary" onClick={() => onDecode(ad.id)}>Try again</button>
               </div>
             )}
-            {ad.decode.status === 'done' && <Decoded ad={ad} onSeek={seek} onDecode={() => onDecode(ad.id)} />}
+            {ad.decode.status === 'done' && <Decoded ad={ad} onSeek={seek} />}
           </div>
         </motion.div>
       </AnimatePresence>
