@@ -9,6 +9,7 @@ import { clock, craftOf, frameRows } from '@/lib/frame-view';
 import { Cover } from './cover';
 import { CraftPanel, FrameByFrame } from './frames';
 import { Glow, ProgressiveBlur } from './glass';
+import { MarketNote } from './market';
 import { useAdDetail } from './use-ad-detail';
 
 const Sparkle = ({ size = 14 }: { size?: number }) => (
@@ -304,6 +305,7 @@ export function Inspector({ ad, rank, total, source, onDecode }: { ad: BoardAd |
           <MediaCard ad={ad} rank={rank} total={total} source={source} video={video} onDecode={() => onDecode(ad.id)} />
 
           <div className="panel p-4">
+            <MarketNote market={ad.market} decoded={ad.decode.status === 'done'} />
             {ad.decode.status === 'none' && (
               <div className="space-y-1.5">
                 <p className="mono text-faint">Not decoded yet</p>

@@ -1,4 +1,4 @@
-import { labelText, REGION_NAMES, scannedAd, scanVideoUrl, sourceLabel, type Breakdown, type Tables } from '@content-lab/core';
+import { checkMarket, labelText, REGION_NAMES, scannedAd, scanVideoUrl, sourceLabel, type Breakdown, type MarketCheck, type MarketVerdict, type Tables } from '@content-lab/core';
 
 // Everything the board shows, computed from database rows. Pure, so the
 // server loader and the tests share it.
@@ -25,13 +25,16 @@ export type BoardAd = {
   labels: AdLabels | null;
   breakdown: Breakdown | null;
   transcript: string | null;
+  // Whether it looks made for Moroccan shoppers, from its text (and its
+  // speech and on-screen text once decoded).
+  market: MarketCheck;
   // When a scan last returned this ad for the board.
   seenAt?: string | null;
 };
 
 type ItemRow = Tables<'items'>;
 type ClassRow = Pick<Tables<'classifications'>, 'item_id' | 'labels_json' | 'created_at'>;
-type MediaRow = Pick<Tables<'media'>, 'item_id' | 'breakdown_json' | 'transcript'>;
+type MediaRow = Pick<Tables<'media'>, 'item_id' | 'breakdown_json' | 'transcript'> & Partial<Pick<Tables<'media'>, 'ocr_text' | 'transcript_lang'>>;
 
 const METRIC_KEYS: Record<string, keyof AdMetrics> = {
   ctr: 'ctr', likes: 'likes', views: 'views', shares: 'shares', comments: 'comments', cost_index: 'costIndex',
@@ -52,6 +55,7 @@ export function toBoardAd(item: ItemRow, rank: number | null, labels: ClassRow |
     if (key && m.value !== null) metrics[key] = m.value;
   }
   const l = (labels?.labels_json ?? null) as Record<string, unknown> | null;
+  const breakdown = (media?.breakdown_json as Breakdown | null) ?? null;
   const running = item.decode_status === 'running' || item.decode_status === 'queued';
   // decoded_at is stamped when a decode starts, and again when it finishes.
   const stale = running && (!item.decoded_at || now.getTime() - Date.parse(item.decoded_at) > STALE_DECODE_MS);
@@ -79,10 +83,27 @@ export function toBoardAd(item: ItemRow, rank: number | null, labels: ClassRow |
       objective: (l.objective as string | null) ?? null,
       language: (l.language as string | null) ?? null,
     } : null,
-    breakdown: (media?.breakdown_json as Breakdown | null) ?? null,
+    breakdown,
     transcript: media?.transcript ?? null,
+    // The model's own summary is left out: only what the ad says and shows.
+    market: checkMarket({
+      texts: [scanned?.caption, item.advertiser, scanned?.advertiser, media?.ocr_text, media?.transcript, breakdown?.hook.text, breakdown?.offer, breakdown?.cta],
+      language: (l?.language as string | null) ?? null,
+      spokenLanguage: media?.transcript_lang ?? null,
+      landingUrl: typeof scan?.landingPageUrl === 'string' ? scan.landingPageUrl : null,
+    }),
   };
 }
+
+export type MarketFilter = 'all' | MarketVerdict;
+
+export function marketCounts(ads: BoardAd[]): Record<MarketFilter, number> {
+  const counts: Record<MarketFilter, number> = { all: ads.length, moroccan: 0, unclear: 0, elsewhere: 0 };
+  for (const ad of ads) counts[ad.market.verdict]++;
+  return counts;
+}
+
+export const byMarket = (ads: BoardAd[], filter: MarketFilter): BoardAd[] => (filter === 'all' ? ads : ads.filter((a) => a.market.verdict === filter));
 
 // Which numbers the board plots and ranks by. Creative Center gives a CTR
 // score and likes; organic posts give views and likes. Never mixed.
