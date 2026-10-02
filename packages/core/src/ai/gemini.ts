@@ -1,8 +1,9 @@
+import { COVER_SYSTEM, coverJsonSchema, CoverOutput, coverUserText } from '../cover';
 import { alignDecodedFrames, DecodeOutput } from '../decode';
 import { DECODE_SYSTEM, decodeJsonSchema, decodeUserText } from '../prompts/decode';
 import { request, type RequestOptions } from './http';
 import type { Pacer } from './pacer';
-import type { TextWriter, VideoDecoder } from './types';
+import type { CoverReader, TextWriter, VideoDecoder } from './types';
 
 // Tracks Google's current Flash model; pin GEMINI_MODEL to a version for reproducible caching.
 export const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest';
@@ -84,6 +85,38 @@ export function geminiDecoder(apiKey: string, options: Options = {}): VideoDecod
       }
       const output = alignDecodedFrames(DecodeOutput.parse(parsed), seconds);
       return { output, inputTokens: result.inputTokens, outputTokens: result.outputTokens };
+    },
+  };
+}
+
+// Covers are small (TikTok sends them under 1 MB), so they go inline.
+const MAX_COVER_BYTES = 4 * 1024 * 1024;
+
+export function geminiCoverReader(apiKey: string, options: Options = {}): CoverReader {
+  const model = options.model || DEFAULT_GEMINI_MODEL;
+  return {
+    name: `gemini:${model}`,
+    async read(image, context) {
+      if (image.data.length > MAX_COVER_BYTES) throw new Error('The cover is too large to read');
+      const body = {
+        systemInstruction: { parts: [{ text: COVER_SYSTEM }] },
+        contents: [{
+          role: 'user',
+          parts: [
+            { inlineData: { mimeType: image.mimeType, data: toBase64(image.data) } },
+            { text: coverUserText(context) },
+          ],
+        }],
+        generationConfig: { responseMimeType: 'application/json', responseJsonSchema: coverJsonSchema(), temperature: 0, maxOutputTokens: 1024 },
+      };
+      const result = await generate(apiKey, model, body, { retries: 1, timeoutMs: 30000, ...options });
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(result.text);
+      } catch {
+        throw new Error('Gemini returned invalid JSON for the cover');
+      }
+      return { output: CoverOutput.parse(parsed), inputTokens: result.inputTokens, outputTokens: result.outputTokens };
     },
   };
 }

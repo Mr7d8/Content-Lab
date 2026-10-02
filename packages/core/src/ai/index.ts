@@ -1,21 +1,22 @@
 import { claudeWriter } from './claude';
-import { geminiDecoder, geminiWriter } from './gemini';
+import { geminiCoverReader, geminiDecoder, geminiWriter } from './gemini';
 import { jevClassifier } from './jev';
 import { createPacer } from './pacer';
-import type { Classifier, TextWriter, VideoDecoder } from './types';
+import type { Classifier, CoverReader, TextWriter, VideoDecoder } from './types';
 
 export * from './types';
 export { ProviderError, request, delay } from './http';
 export { createPacer, type Pacer } from './pacer';
-export { geminiDecoder, geminiWriter, DEFAULT_GEMINI_MODEL, MAX_INLINE_VIDEO_BYTES } from './gemini';
+export { geminiCoverReader, geminiDecoder, geminiWriter, DEFAULT_GEMINI_MODEL, MAX_INLINE_VIDEO_BYTES } from './gemini';
 export { claudeWriter, DEFAULT_CLAUDE_MODEL } from './claude';
 export { jevClassifier, parseJevAnswers, DEFAULT_JEV_MODEL } from './jev';
 
-// One interface for every AI call: the video decode, Jev classification and
-// brief writing. Each capability is an adapter picked by environment
+// One interface for every AI call: the video decode, the cover read, Jev
+// classification and brief writing. Each capability is an adapter picked by environment
 // variables, so moving brief writing from Gemini to Claude is a config change.
 export interface AIProviders {
   decoder: VideoDecoder;
+  coverReader: CoverReader;
   classifier: Classifier;
   briefWriter: TextWriter;
 }
@@ -51,6 +52,9 @@ export function createAIProviders<K extends Capability>(env: AIEnv, capabilities
       case 'decoder':
         // Paid tier expected (billing on), so no free-tier pacer.
         out.decoder = geminiDecoder(required(env, 'GEMINI_API_KEY', 'decoding videos'), { model: env.GEMINI_MODEL || undefined });
+        break;
+      case 'coverReader':
+        out.coverReader = geminiCoverReader(required(env, 'GEMINI_API_KEY', 'reading ad covers for the Moroccan check'), { model: env.GEMINI_MODEL || undefined });
         break;
       case 'classifier':
         out.classifier = jevClassifier(required(env, 'TYPESAFE_API_KEY', 'Jev classification'), { model: env.JEV_MODEL || undefined });

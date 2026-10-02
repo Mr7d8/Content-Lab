@@ -25,7 +25,7 @@ function item(over: Partial<Tables<'items'>> = {}, scan: Record<string, unknown>
     id: 'i1', source: 'tiktok_creative_center', source_url: 'https://ads.tiktok.com/business/creativecenter/topads/7681200654287634439/',
     external_id: '7681200654287634439', advertiser: null, account_handle: null, region: 'MA', industry: null, objective_source: null,
     posted_at: null, collected_at: NOW.toISOString(), duration_s: null, thumbnail_url: null, raw_json: {}, decode_status: null,
-    decode_error: null, decoded_at: null, decode_cost_usd: 0,
+    decode_error: null, decoded_at: null, decode_cost_usd: 0, market_json: null,
     scan_json: { adId: '7681200654287634439', ctr: 0.94, likes: 3973, costIndex: 1, brandName: 'Noon', adText: 'Big sale', durationSeconds: 28.3, coverImageUrl: 'https://cdn/c.jpg', ...scan },
     scanned_at: NOW.toISOString(),
     ...over,
@@ -94,6 +94,18 @@ describe('toBoardAd', () => {
   });
 });
 
+describe('market from the stored check', () => {
+  it('prefers the team call, then a definite check, then the text with the decode', () => {
+    const manual = { verdict: 'elsewhere', elsewhere: 'Marked by the team', reasons: [{ label: 'Marked not Moroccan by the team', examples: [] }], via: ['text', 'manual'], manual: true };
+    expect(toBoardAd(item({ market_json: manual }, { adText: 'طلب ديالك دابا' }), 1, null, null, NOW).market).toMatchObject({ verdict: 'elsewhere', manual: true });
+    const checked = { verdict: 'moroccan', elsewhere: null, reasons: [{ label: 'Store prices in dirhams (MAD)', examples: [] }], via: ['text', 'landing'] };
+    expect(toBoardAd(item({ market_json: checked }, { adText: 'Lure Him' }), 1, null, null, NOW).market).toMatchObject({ verdict: 'moroccan', via: ['text', 'landing'] });
+    const unclear = { verdict: 'unclear', elsewhere: null, reasons: [], via: ['text', 'landing', 'cover'] };
+    expect(toBoardAd(item({ market_json: unclear }, { adText: 'طلب ديالك دابا' }), 1, null, null, NOW).market).toMatchObject({ verdict: 'moroccan', via: ['text', 'landing', 'cover'] });
+    expect(toBoardAd(item({ market_json: { checking_at: '2026-10-02T12:00:00Z' } }, { adText: 'طلب ديالك دابا' }), 1, null, null, NOW).market.verdict).toBe('moroccan');
+  });
+});
+
 describe('market filter', () => {
   const m = (id: string, verdict: 'moroccan' | 'unclear' | 'elsewhere') => ad(id, { market: { verdict, elsewhere: null, reasons: [] } });
   const ads = [m('a', 'moroccan'), m('b', 'elsewhere'), m('c', 'unclear'), m('d', 'moroccan')];
@@ -135,6 +147,10 @@ describe('board text', () => {
       .toEqual(['Creative Center', 'Morocco', 'Purchase', 'Last 30 days']);
     expect(boardEyebrow({ source: 'tiktok_organic', type: 'hashtag', value: 'tiktokmaroc', region: null, objective: null, period_days: 30 }))
       .toEqual(['TikTok organic', 'Hashtag #tiktokmaroc', 'Any region']);
+    expect(boardEyebrow({ source: 'tiktok_creative_center', type: 'keyword', value: 'maroc, livraison gratuite, درهم', region: 'MA', objective: null, period_days: 7 }))
+      .toEqual(['Creative Center', 'Keywords maroc, livraison gratuite +1', 'Morocco', 'Last 7 days']);
+    expect(boardEyebrow({ source: 'tiktok_creative_center', type: 'snowball', value: 'auto', region: 'MA', objective: null, period_days: 30 }))
+      .toEqual(['Creative Center', 'Following Moroccan advertisers', 'Morocco', 'Last 30 days']);
   });
 
   it('says what the board shows so far', () => {

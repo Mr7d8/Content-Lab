@@ -1,9 +1,12 @@
-// "Looks Moroccan": whether an ad seems made for Moroccan shoppers, from its
-// text. Creative Center's Morocco results mix Moroccan ads with Gulf,
-// Egyptian and Asian ads that also ran in Morocco; a board filters on this.
-// Rules only, no AI: prices in dirhams, Darija words, Moroccan places, phone
-// numbers and sites count for Morocco; other currencies, places, dialects,
-// Eastern Arabic digits and other scripts count against.
+import type { LandingSignals } from './landing';
+
+// "Looks Moroccan": whether an ad seems made for Moroccan shoppers. Creative
+// Center's Morocco results mix Moroccan ads with Gulf, Egyptian and Asian ads
+// that also ran in Morocco; boards filter and gate on this. Rules only: prices
+// in dirhams, Darija words, Moroccan places, phone numbers, sites, couriers
+// and store settings count for Morocco; other currencies, places, dialects,
+// Eastern Arabic digits and other scripts count against. The landing page and
+// a read of the cover add evidence when the ad text is not enough.
 
 export type MarketVerdict = 'moroccan' | 'elsewhere' | 'unclear';
 
@@ -18,6 +21,10 @@ export type MarketCheck = {
   reasons: MarketReason[];
 };
 
+// What a read of the ad's cover image found: its text, and the country it
+// points to when the image shows it (ISO 3166-1 alpha-2).
+export type CoverRead = { text: string[]; country: string | null };
+
 export type MarketInput = {
   // Ad text, advertiser name, and after a decode the on-screen text, speech,
   // offer and call to action.
@@ -27,6 +34,10 @@ export type MarketInput = {
   // The decode's free-text spoken language, e.g. "Darija (Moroccan Arabic)".
   spokenLanguage?: string | null;
   landingUrl?: string | null;
+  landing?: LandingSignals | null;
+  cover?: CoverRead | null;
+  // The advertiser's entry in the advertisers list, if any.
+  advertiser?: { status: 'moroccan' | 'blocked'; name: string } | null;
 };
 
 const LETTER = '[\\p{L}\\p{M}\\p{N}_]';
@@ -36,7 +47,7 @@ const LETTER = '[\\p{L}\\p{M}\\p{N}_]';
 export function normalizeText(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[ً-ٰٟـ]/g, '')
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
     .replace(/[أإآ]/g, 'ا')
     .replace(/ة/g, 'ه')
     .replace(/ى/g, 'ي');
@@ -85,7 +96,11 @@ const RULES: Rule[] = [
   { side: MA, weight: 1, reason: 'Darija words', pattern: words(DARIJA_LATIN, false), perMatch: true },
   { side: MA, weight: 2, reason: 'Moroccan city', pattern: words(MA_CITIES) },
   { side: MA, weight: 2, reason: 'Moroccan city', pattern: words(MA_CITIES_LATIN, false) },
-  { side: MA, weight: 3, reason: 'Moroccan phone number', pattern: /(?:\+|00)212[\s.-]?[5-7]/g },
+  { side: MA, weight: 3, reason: 'Moroccan phone number', pattern: /(?:\+|00)212[\s.-]?[5-7]|(?:wa\.me\/|phone=|tel:)(?:\+|00)?212/g },
+  {
+    side: MA, weight: 2, reason: 'Moroccan delivery company',
+    pattern: /(?<![\p{L}])(?:ozon ?express|cathedis|sendit\.ma|ctm messagerie|olivraison|forcelog|digylog|amana express|barid al.?maghrib)(?![\p{L}])/gu,
+  },
   { side: MA, weight: 3, reason: 'Moroccan website (.ma)', pattern: /(?<![\p{L}\p{N}])(?:[\p{L}\p{N}-]+\.)+ma(?=$|[/\s?#:),!])/gu },
 
   // Gulf
@@ -99,6 +114,7 @@ const RULES: Rule[] = [
   { side: 'Gulf', weight: 3, reason: 'Price in riyals or another Gulf currency', pattern: /(?<![\p{L}])(?:sar|aed|kwd|qar|bhd|omr)(?![\p{L}])/gu },
   { side: 'Gulf', weight: 2, reason: 'National Day offer', pattern: /اليوم الوطني/gu },
   { side: 'Gulf', weight: 1, reason: 'Gulf dialect', pattern: words(['الحين', 'دحين', 'وش', 'ابغي', 'ابغا', 'شلون', 'يبغي', 'تبغي']), perMatch: true },
+  { side: 'Gulf', weight: 3, reason: 'Gulf phone number', pattern: /(?:\+|00|wa\.me\/|phone=|tel:\+?)(?:966|971|965|974|973|968)[\s.-]?\d/g },
 
   // Egypt, Algeria, Tunisia
   { side: 'Egypt', weight: 3, reason: 'Egypt', pattern: /🇪🇬|(?<![\p{L}])(?:egypt|cairo|egp)(?![\p{L}])/gu },
@@ -107,6 +123,7 @@ const RULES: Rule[] = [
   { side: 'Algeria', weight: 3, reason: 'Algeria', pattern: /🇩🇿|(?<![\p{L}])(?:algérie|algerie|algeria|dzd)(?![\p{L}])|\d\s?da(?![\p{L}])/gu },
   { side: 'Algeria', weight: 3, reason: 'Algeria', pattern: words(['الجزائر', 'جزائري', 'جزائريه', 'دزاير', 'دج']) },
   { side: 'Algeria', weight: 3, reason: 'Delivery to all 58 or 69 wilayas', pattern: /(?:58|69)\s?ولايه/gu },
+  { side: 'Algeria', weight: 3, reason: 'Algerian delivery company', pattern: /(?<![\p{L}])(?:yalidine|zr ?express|maystro delivery|ecotrack)(?![\p{L}])/gu },
   { side: 'Tunisia', weight: 3, reason: 'Tunisia', pattern: /🇹🇳|(?<![\p{L}])(?:tunisie|tunisia|tnd)(?![\p{L}])/gu },
   { side: 'Tunisia', weight: 3, reason: 'Tunisia', pattern: words(['تونس', 'تونسي', 'تونسيه', 'برشا', 'د.ت']) },
 
@@ -120,8 +137,42 @@ const RULES: Rule[] = [
 
 const MAX_WORD_POINTS = 3;
 
-function spokenSignals(input: MarketInput): { side: string; weight: number; reason: string }[] {
-  const out: { side: string; weight: number; reason: string }[] = [];
+type Signal = { side: string; weight: number; reason: string; examples?: string[] };
+
+// Which side a country code counts for.
+const COUNTRY_SIDE: Record<string, string> = {
+  MA: MA, SA: 'Gulf', AE: 'Gulf', KW: 'Gulf', QA: 'Gulf', BH: 'Gulf', OM: 'Gulf', EG: 'Egypt', DZ: 'Algeria', TN: 'Tunisia',
+  FR: 'Europe', ES: 'Europe', BE: 'Europe', DE: 'Europe', IT: 'Europe', GB: 'Europe', NL: 'Europe',
+  JP: 'East Asia', CN: 'East Asia', KR: 'East Asia', TW: 'East Asia', HK: 'East Asia',
+  US: 'North America', CA: 'North America', TR: 'Turkey', IN: 'South or Southeast Asia', PH: 'South or Southeast Asia',
+  ID: 'South or Southeast Asia', VN: 'South or Southeast Asia', TH: 'South or Southeast Asia', MY: 'South or Southeast Asia',
+};
+const CURRENCY_SIDE: Record<string, string> = { MAD: MA, SAR: 'Gulf', AED: 'Gulf', KWD: 'Gulf', QAR: 'Gulf', BHD: 'Gulf', OMR: 'Gulf', EGP: 'Egypt', DZD: 'Algeria', TND: 'Tunisia', EUR: 'Europe' };
+
+// Evidence beyond the ad text: the decoded speech, the landing page's store
+// settings, the cover read, and the team's advertisers list.
+function extraSignals(input: MarketInput): Signal[] {
+  const out: Signal[] = [];
+  const { landing, cover, advertiser } = input;
+  if (advertiser?.status === 'blocked') out.push({ side: 'Blocked by the team', weight: 10, reason: 'Advertiser blocked as not Moroccan', examples: [advertiser.name] });
+  if (advertiser?.status === 'moroccan') out.push({ side: MA, weight: 5, reason: 'Known Moroccan advertiser', examples: [advertiser.name] });
+  if (landing?.currency && CURRENCY_SIDE[landing.currency]) {
+    out.push({ side: CURRENCY_SIDE[landing.currency] as string, weight: 4, reason: landing.currency === 'MAD' ? 'Store prices in dirhams (MAD)' : `Store prices in ${landing.currency}` });
+  }
+  const localeCountry = landing?.locale?.split('_')[1];
+  if (localeCountry && ['MA', 'SA', 'AE', 'KW', 'QA', 'BH', 'OM', 'EG', 'DZ', 'TN'].includes(localeCountry)) {
+    out.push({ side: COUNTRY_SIDE[localeCountry] as string, weight: 2, reason: localeCountry === 'MA' ? 'Store set to Morocco' : `Store set to ${localeCountry}` });
+  }
+  if (landing?.platform === 'youcan') out.push({ side: MA, weight: 1, reason: 'Store on YouCan (a Moroccan platform)' });
+  if (cover?.country) {
+    const side = COUNTRY_SIDE[cover.country] ?? 'Elsewhere';
+    out.push({ side, weight: 2, reason: side === MA ? 'Cover reads as Moroccan' : `Cover reads as made for ${side === 'Elsewhere' ? cover.country : side}` });
+  }
+  return [...out, ...spokenSignals(input)];
+}
+
+function spokenSignals(input: MarketInput): Signal[] {
+  const out: Signal[] = [];
   const spoken = input.spokenLanguage ?? '';
   if (input.language === 'darija' || /darija|moroccan/i.test(spoken)) out.push({ side: MA, weight: 3, reason: 'Spoken in Darija' });
   else if (/egyptian/i.test(spoken)) out.push({ side: 'Egypt', weight: 3, reason: 'Spoken in Egyptian Arabic' });
@@ -132,18 +183,20 @@ function spokenSignals(input: MarketInput): { side: string; weight: number; reas
 }
 
 export function checkMarket(input: MarketInput): MarketCheck {
-  const text = normalizeText([...input.texts, input.landingUrl].filter((t): t is string => !!t && !!t.trim()).join('\n'));
+  const { landing, cover } = input;
+  const sources = [...input.texts, input.landingUrl, landing?.url, landing?.text, landing?.links.join(' '), ...(cover?.text ?? [])];
+  const text = normalizeText(sources.filter((t): t is string => !!t && !!t.trim()).join('\n'));
   const scores = new Map<string, number>();
-  const reasons = new Map<string, { side: string; weight: number; found: Set<string> }>();
-  const add = (side: string, weight: number, reason: string, found?: string) => {
+  const reasons = new Map<string, { side: string; weight: number; found: Set<string>; show: boolean }>();
+  const add = (side: string, weight: number, reason: string, found: string[] = [], show = false) => {
     scores.set(side, (scores.get(side) ?? 0) + weight);
-    const r = reasons.get(reason) ?? { side, weight: 0, found: new Set<string>() };
+    const r = reasons.get(reason) ?? { side, weight: 0, found: new Set<string>(), show };
     r.weight += weight;
-    if (found) r.found.add(found);
+    for (const f of found) r.found.add(f);
     reasons.set(reason, r);
   };
 
-  for (const s of spokenSignals(input)) add(s.side, s.weight, s.reason);
+  for (const s of extraSignals(input)) add(s.side, s.weight, s.reason, s.examples, !!s.examples?.length);
   // Each reason counts once, except dialect words, which add up to a cap.
   const wordPoints = new Map<string, number>();
   for (const rule of RULES) {
@@ -155,10 +208,9 @@ export function checkMarket(input: MarketInput): MarketCheck {
       const points = Math.min(distinct.length * rule.weight, MAX_WORD_POINTS - used);
       if (points <= 0) continue;
       wordPoints.set(rule.side, used + points);
-      add(rule.side, points, rule.reason);
-      for (const d of distinct.slice(0, 3)) reasons.get(rule.reason)?.found.add(d);
+      add(rule.side, points, rule.reason, distinct.slice(0, 3), true);
     } else if (!reasons.has(rule.reason)) {
-      add(rule.side, rule.weight, rule.reason, matches[0]);
+      add(rule.side, rule.weight, rule.reason);
     }
   }
 
@@ -169,6 +221,6 @@ export function checkMarket(input: MarketInput): MarketCheck {
   const listed = [...reasons.entries()]
     .filter(([, r]) => (verdict === 'moroccan' ? r.side === MA : verdict === 'elsewhere' ? r.side !== MA : true))
     .sort((a, b) => b[1].weight - a[1].weight)
-    .map(([label, r]) => ({ label, examples: /words|dialect/.test(label) ? [...r.found] : [] }));
+    .map(([label, r]) => ({ label, examples: r.show ? [...r.found] : [] }));
   return { verdict, elsewhere: verdict === 'elsewhere' ? (others[0]?.[0] ?? null) : null, reasons: listed };
 }
