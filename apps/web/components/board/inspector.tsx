@@ -56,7 +56,8 @@ function MediaCard({
   return (
     <div className="relative isolate px-1 pb-3">
       <Glow src={ad.cover} className="left-8 top-12 h-[calc(100%-40px)] w-[calc(100%-64px)]" />
-      <div className="relative aspect-[9/14] max-h-[74vh] w-full overflow-hidden rounded-[30px] bg-[#111] shadow-[0_0_0_1px_rgba(255,255,255,.25),0_28px_50px_-24px_rgba(0,0,0,.55)]">
+      {/* 9:16 like the ad itself; narrower on short screens so it never overflows. */}
+      <div className="relative mx-auto aspect-[9/16] w-full max-w-[calc(76vh*9/16)] overflow-hidden rounded-[30px] bg-[#111] shadow-[0_0_0_1px_rgba(255,255,255,.25),0_28px_50px_-24px_rgba(0,0,0,.55)]">
         {playable ? (
           <video
             ref={video}
@@ -78,11 +79,18 @@ function MediaCard({
           <Cover ad={ad} className="absolute inset-0 h-full w-full" />
         )}
         {/* Only the band under the name, numbers and buttons is frosted. */}
-        <ProgressiveBlur className="top-[56%]" steps={4} max={24} />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[50%] bg-gradient-to-t from-black/75 via-black/35 to-transparent" />
+        <ProgressiveBlur className="top-[70%]" steps={4} max={20} />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[34%] bg-gradient-to-t from-black/75 via-black/35 to-transparent" />
 
         <div className="absolute inset-x-3 top-3 flex items-start justify-between gap-2">
-          <span className="liquid-dark mono rounded-full px-2.5 py-1 text-[10px] tabular-nums">#{rank} of {total}</span>
+          <div className="flex items-center gap-1.5">
+            <span className="liquid-dark mono rounded-full px-2.5 py-1 text-[10px] tabular-nums">#{rank} of {total}</span>
+            {!playable && (
+              <span className="liquid-dark mono rounded-full px-2.5 py-1 text-[10px]" title="The video link expired. Scan again to play it here; decoding fetches its own copy.">
+                Video expired
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-1.5">
             {status === 'running' && (
               <span className="liquid-dark mono flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px]">
@@ -100,11 +108,6 @@ function MediaCard({
             )}
           </div>
         </div>
-        {!playable && (
-          <p className="liquid-dark absolute inset-x-3 top-14 rounded-[14px] px-3 py-2 text-[11.5px] leading-snug">
-            The video link expired. Scan again to play it here; decoding fetches its own copy.
-          </p>
-        )}
         <AnimatePresence>
           {playable && !playing && (
             <motion.button
@@ -114,59 +117,62 @@ function MediaCard({
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
-              className="liquid-dark absolute left-1/2 top-[34%] grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full"
+              className="liquid-dark absolute left-1/2 top-[42%] grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full"
             >
               <svg width="18" height="18" viewBox="0 0 12 12" aria-hidden><path d="M3.5 1.8v8.4L10.5 6Z" fill="currentColor" /></svg>
             </motion.button>
           )}
         </AnimatePresence>
 
-        <div className="absolute inset-x-0 bottom-0 space-y-3.5 p-5 text-white">
-          <div>
-            <p className="flex items-center gap-2 text-[21px] font-semibold leading-tight tracking-tight" dir="auto">
+        <div className="absolute inset-x-0 bottom-0 space-y-2.5 px-3.5 pb-3.5 text-white">
+          <div className="min-w-0">
+            <p className="flex items-center gap-1.5 text-[15px] font-semibold leading-tight tracking-tight" dir="auto">
               <span className="truncate">{name}</span>
               {status === 'done' && (
-                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-accent shadow-[0_0_0_2px_rgba(255,255,255,.25)]" aria-label="Decoded">
-                  <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden><path d="m2.5 6.2 2.3 2.3 4.7-5" stroke="#fff" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-accent shadow-[0_0_0_1.5px_rgba(255,255,255,.25)]" aria-label="Decoded">
+                  <svg width="8" height="8" viewBox="0 0 12 12" aria-hidden><path d="m2.5 6.2 2.3 2.3 4.7-5" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 </span>
               )}
             </p>
-            {ad.caption && <p className="mt-1.5 line-clamp-2 text-[13.5px] leading-snug text-white/80" dir="auto">{ad.caption}</p>}
+            {ad.caption && <p className="mt-0.5 truncate text-[12px] text-white/75" dir="auto">{ad.caption}</p>}
           </div>
-          <div className="grid grid-cols-3 divide-x divide-white/20 text-center">
-            {statsFor(ad, source).map((st) => (
-              <div key={st.label} className="px-1">
-                <p className="text-[17px] font-semibold tabular-nums tracking-tight">{st.value}</p>
-                <p className="mt-0.5 text-[11.5px] text-white/65">{st.label}</p>
-              </div>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] tabular-nums text-white/70">
+            {statsFor(ad, source).map((st, i) => (
+              <span key={st.label} className="flex items-center gap-2">
+                {i > 0 && <span aria-hidden className="h-3 w-px bg-white/25" />}
+                <span>
+                  <b className="font-semibold text-white">{st.value}</b>
+                  {st.label === 'Length' ? '' : ` ${st.label === 'CTR' ? 'CTR' : st.label.toLowerCase()}`}
+                </span>
+              </span>
             ))}
-          </div>
-          <div className="flex items-center gap-2.5">
+          </p>
+          <div className="flex items-center gap-2">
             {status === 'done' ? (
-              <a href={ad.sourceUrl} target="_blank" rel="noreferrer" className="btn-light flex-1">
+              <a href={ad.sourceUrl} target="_blank" rel="noreferrer" className="btn-light flex-1 !py-2 !text-[13px]">
                 Open in {sourceLabel(ad.source)}
-                <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden><path d="M4 2h6v6M10 2 3 9" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden><path d="M4 2h6v6M10 2 3 9" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </a>
             ) : (
-              <button type="button" className="btn-light flex-1" onClick={onDecode} disabled={status === 'running'}>
+              <button type="button" className="btn-light flex-1 !py-2 !text-[13px]" onClick={onDecode} disabled={status === 'running'}>
                 {status === 'running' ? (
                   <>
-                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-ink/20 border-t-ink" /> Decoding
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-ink/20 border-t-ink" /> Decoding
                   </>
                 ) : (
                   <>
-                    <Sparkle /> {status === 'failed' ? 'Try again' : 'Decode this ad'}
+                    <Sparkle size={12} /> {status === 'failed' ? 'Try again' : 'Decode this ad'}
                   </>
                 )}
               </button>
             )}
             {status === 'done' ? (
-              <button type="button" onClick={onDecode} className="liquid-dark grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full" aria-label="Decode again" title="Decode again">
-                <svg width="16" height="16" viewBox="0 0 14 14" aria-hidden><path d="M12 7a5 5 0 1 1-1.5-3.6M12 2v2.6H9.4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              <button type="button" onClick={onDecode} className="liquid-dark grid h-9 w-9 shrink-0 place-items-center rounded-full" aria-label="Decode again" title="Decode again">
+                <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden><path d="M12 7a5 5 0 1 1-1.5-3.6M12 2v2.6H9.4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
             ) : (
-              <a href={ad.sourceUrl} target="_blank" rel="noreferrer" className="liquid-dark grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full" aria-label={`Open in ${sourceLabel(ad.source)}`} title={`Open in ${sourceLabel(ad.source)}`}>
-                <svg width="14" height="14" viewBox="0 0 12 12" aria-hidden><path d="M4 2h6v6M10 2 3 9" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              <a href={ad.sourceUrl} target="_blank" rel="noreferrer" className="liquid-dark grid h-9 w-9 shrink-0 place-items-center rounded-full" aria-label={`Open in ${sourceLabel(ad.source)}`} title={`Open in ${sourceLabel(ad.source)}`}>
+                <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden><path d="M4 2h6v6M10 2 3 9" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </a>
             )}
           </div>
