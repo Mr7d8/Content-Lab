@@ -707,6 +707,7 @@ export type Database = {
     };
     Views: { [_ in never]: never };
     Functions: {
+      claim_market_checks: { Args: { board: string; max_items: number; stale?: string }; Returns: { item_id: string }[] };
       is_team_member: { Args: Record<PropertyKey, never>; Returns: boolean };
       month_spend_usd: { Args: Record<PropertyKey, never>; Returns: number };
     };

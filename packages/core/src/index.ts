@@ -11,3 +11,5 @@ export * from './classify';
 export * from './market';
 export * from './terms';
 export * from './presets';
+export * from './landing';
+export * from './cover';

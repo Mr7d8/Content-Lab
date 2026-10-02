@@ -50,10 +50,11 @@ const { rows: uniques } = await client.query(`
   where con.contype in ('p', 'u') and ns.nspname = 'public'`);
 
 const { rows: functions } = await client.query(`
-  select p.proname as name, pg_get_function_result(p.oid) as result
+  select p.proname as name, pg_get_function_result(p.oid) as result, p.pronargdefaults as defaults,
+         coalesce(p.proargnames[1:p.pronargs], '{}') as arg_names,
+         array(select format_type(t, null) from unnest(p.proargtypes) t) as arg_types
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-  where n.nspname = 'public' and p.pronargs = 0
-    and pg_get_function_result(p.oid) <> 'trigger'
+  where n.nspname = 'public' and pg_get_function_result(p.oid) <> 'trigger'
   order by p.proname`);
 
 await client.end();
@@ -122,12 +123,24 @@ ${indent(10)}}`;
   out += `${indent(8)}Relationships: [${rels.length ? `\n${indent(10)}${rels.join(`,\n${indent(10)}`)},\n${indent(8)}` : ''}];\n`;
   out += `${indent(6)}};\n`;
 }
-const fnResult = { boolean: 'boolean', numeric: 'number', integer: 'number', bigint: 'number', text: 'string' };
+const fnResult = { boolean: 'boolean', numeric: 'number', integer: 'number', bigint: 'number', text: 'string', uuid: 'string', interval: 'string' };
 const fnType = (result) => fnResult[result] ?? 'unknown';
+// "TABLE(item_id uuid)" -> { item_id: string }[]; "SETOF uuid" -> string[].
+function fnReturns(result) {
+  const table = /^TABLE\((.*)\)$/.exec(result);
+  if (table) return `{ ${table[1].split(',').map((c) => c.trim().split(/\s+/)).map(([n, t]) => `${n}: ${fnType(t)}`).join('; ')} }[]`;
+  const set = /^SETOF (.+)$/.exec(result);
+  return set ? `${fnType(set[1])}[]` : fnType(result);
+}
+function fnArgs(f) {
+  if (!f.arg_types.length) return 'Record<PropertyKey, never>';
+  const firstOptional = f.arg_types.length - f.defaults;
+  return `{ ${f.arg_types.map((t, i) => `${f.arg_names[i]}${i >= firstOptional ? '?' : ''}: ${fnType(t)}`).join('; ')} }`;
+}
 out += `    };
     Views: { [_ in never]: never };
     Functions: {
-${functions.map((f) => `      ${f.name}: { Args: Record<PropertyKey, never>; Returns: ${fnType(f.result)} };`).join('\n')}
+${functions.map((f) => `      ${f.name}: { Args: ${fnArgs(f)}; Returns: ${fnReturns(f.result)} };`).join('\n')}
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

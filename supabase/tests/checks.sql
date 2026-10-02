@@ -321,3 +321,23 @@ do $$ begin
   raise notice 'PASS advertisers closed to strangers and anon';
 end $$;
 rollback;
+
+-- The Moroccan check's claims: one check per ad, stale claims expire, server only
+begin;
+do $$ declare board uuid; a uuid; b uuid; c uuid; n int; got uuid; begin
+  insert into public.watchlists (name, source, type, value, region, moroccan_only) values ('Claims', 'tiktok_creative_center', 'keyword', 'maroc', 'MA', true) returning id into board;
+  insert into public.items (source, source_url, external_id) values ('tiktok_creative_center', 'https://x/1', '7300000000000001001') returning id into a;
+  insert into public.items (source, source_url, external_id) values ('tiktok_creative_center', 'https://x/2', '7300000000000001002') returning id into b;
+  insert into public.items (source, source_url, external_id, market_json) values ('tiktok_creative_center', 'https://x/3', '7300000000000001003', '{"verdict":"moroccan"}') returning id into c;
+  insert into public.board_items (watchlist_id, item_id, rank, status) values (board, a, 1, 'pending'), (board, b, 2, 'pending'), (board, c, 3, 'pending');
+  select item_id into got from public.claim_market_checks(board, 1);
+  if got <> a then raise exception 'FAIL claim does not take the top ranked ad first'; end if;
+  if not (select market_json ? 'checking_at' from public.items where id = a) then raise exception 'FAIL claim not marked'; end if;
+  select count(*) into n from public.claim_market_checks(board, 5);
+  if n <> 1 then raise exception 'FAIL claimed ads taken twice or a checked ad taken (%)', n; end if;
+  select count(*) into n from public.claim_market_checks(board, 5, interval '-1 second');
+  if n <> 2 then raise exception 'FAIL stale claims not taken back (%)', n; end if;
+  if has_function_privilege('authenticated', 'public.claim_market_checks(uuid, integer, interval)', 'execute') then raise exception 'FAIL members can claim'; end if;
+  raise notice 'PASS Moroccan check claims';
+end $$;
+rollback;

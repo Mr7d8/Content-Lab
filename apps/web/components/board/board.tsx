@@ -10,7 +10,7 @@ import { Ambient } from './glass';
 import { Hero } from './hero';
 import { Inspector } from './inspector';
 import { Kpis } from './kpis';
-import { MarketFilter } from './market';
+import { GateBar, MarketFilter } from './market';
 import { NewBoardDialog } from './new-board';
 import { PerfMap } from './perf-map';
 import { TopAds } from './top-ads';
@@ -70,7 +70,10 @@ export function Board({ data }: { data: BoardData }) {
   // The latest scan by default; ads from earlier scans on request.
   const [withOlder, setWithOlder] = useState(false);
   const { current, older } = useMemo(() => splitByScan(data.ads, data.cutoff), [data.ads, data.cutoff]);
-  const scoped = withOlder ? data.ads : current;
+  // A Moroccan board shows the ads its gate let in, unless asked for the rest.
+  const [showLeftOut, setShowLeftOut] = useState(false);
+  const inScan = withOlder ? data.ads : current;
+  const scoped = useMemo(() => (showLeftOut ? inScan : inScan.filter((a) => (a.gate ?? 'shown') === 'shown')), [inScan, showLeftOut]);
   const [marketChoice, setMarket] = useMarketFilter();
   const counts = useMemo(() => marketCounts(scoped), [scoped]);
   // A filter with no ads in this board shows them all instead of nothing.
@@ -126,6 +129,7 @@ export function Board({ data }: { data: BoardData }) {
           onSelect={select}
         />
         <MarketFilter value={market} counts={counts} onChange={setMarket} />
+        {board.moroccan_only && <GateBar boardId={board.id} gate={data.gate} ads={inScan} showLeftOut={showLeftOut} onToggle={() => setShowLeftOut((v) => !v)} />}
         <Kpis stats={stats} source={source} decoding={queue.active.size} cover={ads[0]?.cover ?? null} />
 
         <section className="mt-12" aria-labelledby="overview-title">

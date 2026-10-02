@@ -94,6 +94,18 @@ describe('toBoardAd', () => {
   });
 });
 
+describe('market from the stored check', () => {
+  it('prefers the team call, then a definite check, then the text with the decode', () => {
+    const manual = { verdict: 'elsewhere', elsewhere: 'Marked by the team', reasons: [{ label: 'Marked not Moroccan by the team', examples: [] }], via: ['text', 'manual'], manual: true };
+    expect(toBoardAd(item({ market_json: manual }, { adText: 'طلب ديالك دابا' }), 1, null, null, NOW).market).toMatchObject({ verdict: 'elsewhere', manual: true });
+    const checked = { verdict: 'moroccan', elsewhere: null, reasons: [{ label: 'Store prices in dirhams (MAD)', examples: [] }], via: ['text', 'landing'] };
+    expect(toBoardAd(item({ market_json: checked }, { adText: 'Lure Him' }), 1, null, null, NOW).market).toMatchObject({ verdict: 'moroccan', via: ['text', 'landing'] });
+    const unclear = { verdict: 'unclear', elsewhere: null, reasons: [], via: ['text', 'landing', 'cover'] };
+    expect(toBoardAd(item({ market_json: unclear }, { adText: 'طلب ديالك دابا' }), 1, null, null, NOW).market).toMatchObject({ verdict: 'moroccan', via: ['text', 'landing', 'cover'] });
+    expect(toBoardAd(item({ market_json: { checking_at: '2026-10-02T12:00:00Z' } }, { adText: 'طلب ديالك دابا' }), 1, null, null, NOW).market.verdict).toBe('moroccan');
+  });
+});
+
 describe('market filter', () => {
   const m = (id: string, verdict: 'moroccan' | 'unclear' | 'elsewhere') => ad(id, { market: { verdict, elsewhere: null, reasons: [] } });
   const ads = [m('a', 'moroccan'), m('b', 'elsewhere'), m('c', 'unclear'), m('d', 'moroccan')];

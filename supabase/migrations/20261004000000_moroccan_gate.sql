@@ -85,3 +85,37 @@ $$;
 revoke all on function public.month_spend_usd() from public;
 revoke execute on function public.month_spend_usd() from anon;
 grant execute on function public.month_spend_usd() to authenticated, service_role;
+
+-------------------------------------------------------------------------------
+-- The Moroccan check claims the ads it works on, so two checks running at
+-- once (the open board and the scan webhook) never pay for the same ad. A
+-- claim is a marker in market_json and expires if a check dies.
+-------------------------------------------------------------------------------
+
+create or replace function public.claim_market_checks(board uuid, max_items integer, stale interval default interval '6 minutes')
+returns table (item_id uuid)
+language sql
+volatile
+security invoker
+set search_path = ''
+as $$
+  update public.items i
+  set market_json = jsonb_build_object('checking_at', now())
+  where i.id in (
+    select it.id
+    from public.board_items bi
+    join public.items it on it.id = bi.item_id
+    where bi.watchlist_id = board and bi.status = 'pending'
+      and (it.market_json is null
+           or (it.market_json ? 'checking_at' and not it.market_json ? 'verdict'
+               and (it.market_json ->> 'checking_at')::timestamptz < now() - stale))
+    order by bi.rank nulls last
+    limit max_items
+    for update of it skip locked
+  )
+  returning i.id;
+$$;
+
+revoke all on function public.claim_market_checks(uuid, integer, interval) from public;
+revoke execute on function public.claim_market_checks(uuid, integer, interval) from anon, authenticated;
+grant execute on function public.claim_market_checks(uuid, integer, interval) to service_role;

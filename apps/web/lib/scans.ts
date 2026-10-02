@@ -4,6 +4,7 @@ import { estimateScan, scanInput, sweepRunCap, type TablesInsert } from '@conten
 import type { AdminClient } from './admin';
 import { FINISHED_RUN_STATUSES, getActorRun, getDatasetItems, startActorRun } from './apify';
 import { cacheCover } from './covers';
+import { bookFrom, gateStatus, readStoredMarket, type GateStatus } from './gate';
 import { planIngest, scanOutcome } from './scan-ingest';
 
 const SCAN_TIMEOUT_S = 600;
@@ -43,6 +44,15 @@ function siteUrl(): string | null {
 
 export type StartScanResult = { ok: true; runId: string; already?: boolean } | { ok: false; message: string };
 
+// Names of the advertisers marked Moroccan, newest first: what a snowball
+// board searches for. Only brand names, since Creative Center searches ad
+// text and brand names, not landing pages.
+async function followedAdvertisers(admin: AdminClient): Promise<string[]> {
+  const { data } = await admin.from('advertisers').select('name').eq('status', 'moroccan').like('key', 'brand:%')
+    .order('updated_at', { ascending: false }).limit(10);
+  return (data ?? []).map((a) => a.name);
+}
+
 // Starts a scan of a board, under the monthly budget. One scan per board at a time.
 export async function startScan(admin: AdminClient, boardId: string, trigger: 'manual' | 'schedule'): Promise<StartScanResult> {
   const { data: board, error: boardError } = await admin.from('watchlists').select('*').eq('id', boardId).maybeSingle();
@@ -61,6 +71,13 @@ export async function startScan(admin: AdminClient, boardId: string, trigger: 'm
     admin.rpc('month_spend_usd'),
   ]);
   if (!settings) return { ok: false, message: 'Settings are missing: run the database migrations.' };
+  let input: Record<string, unknown>;
+  try {
+    input = scanInput(board, board.type === 'snowball' ? { followed: await followedAdvertisers(admin) } : {});
+  } catch (e) {
+    return { ok: false, message: (e as Error).message };
+  }
+
   const estimate = estimateScan(board.max_items);
   const cap = sweepRunCap(settings, Number(spend ?? 0));
   if (cap < estimate) return { ok: false, message: `This month's budget is used ($${Number(spend ?? 0).toFixed(2)} of $${Number(settings.monthly_spend_cap_usd).toFixed(2)}).` };
@@ -76,7 +93,7 @@ export async function startScan(admin: AdminClient, boardId: string, trigger: 'm
   try {
     const token = webhookToken(run.id);
     const site = siteUrl();
-    const started = await startActorRun(actor(), scanInput(board), {
+    const started = await startActorRun(actor(), input, {
       token: apifyToken(),
       timeoutS: SCAN_TIMEOUT_S,
       maxItems: board.max_items,
@@ -93,7 +110,7 @@ export async function startScan(admin: AdminClient, boardId: string, trigger: 'm
   }
 }
 
-export type SyncResult = { status: string; synced: number; added: number; done: boolean; error: string | null };
+export type SyncResult = { status: string; synced: number; added: number; done: boolean; error: string | null; boardId?: string | null };
 
 // Pulls the scan's new rows into the board, saving covers as it goes. Safe to
 // call repeatedly and from several places (the open board, the webhook).
@@ -101,9 +118,9 @@ export async function syncScan(admin: AdminClient, runId: string, budgetMs = 800
   const started = Date.now();
   const { data: run } = await admin.from('runs').select('*').eq('id', runId).maybeSingle();
   if (!run) return { status: 'missing', synced: 0, added: 0, done: true, error: 'Scan not found' };
-  const idle = { status: run.status, synced: run.synced_count, added: 0, done: run.status !== 'running', error: run.error };
+  const idle = { status: run.status, synced: run.synced_count, added: 0, done: run.status !== 'running', error: run.error, boardId: run.watchlist_id };
   if (run.kind !== 'scan' || run.status !== 'running' || !run.worker_run_id || !run.apify_dataset_id || !run.watchlist_id) return idle;
-  const { data: board } = await admin.from('watchlists').select('id, type, value, source, objective').eq('id', run.watchlist_id).maybeSingle();
+  const { data: board } = await admin.from('watchlists').select('id, type, value, source, objective, moroccan_only').eq('id', run.watchlist_id).maybeSingle();
   if (!board) return idle;
 
   const token = apifyToken();
@@ -133,16 +150,39 @@ export async function syncScan(admin: AdminClient, runId: string, budgetMs = 800
     cost_actual_usd: Number(Math.min(cost, 999).toFixed(4)),
     ...(outcome ? { status: outcome.status, error: outcome.error, finished_at: new Date().toISOString() } : {}),
   }).eq('id', run.id).eq('synced_count', run.synced_count);
-  return { status: outcome?.status ?? 'running', synced: offset, added, done, error: outcome?.error ?? null };
+  return { status: outcome?.status ?? 'running', synced: offset, added, done, error: outcome?.error ?? null, boardId: board.id };
+}
+
+type IngestBoard = { id: string; type: string; value: string; source: string; objective: string | null; moroccan_only: boolean };
+
+// Where each ad of a page goes on the board: everything shows on an ordinary
+// board; a Moroccan board shows Moroccan ads, leaves out the others and
+// queues the unclear ones for the check.
+async function gateFor(admin: AdminClient, board: IngestBoard, ads: ReturnType<typeof planIngest>['ads']): Promise<Map<string, GateStatus>> {
+  const out = new Map<string, GateStatus>();
+  if (!board.moroccan_only) {
+    for (const ad of ads) out.set(ad.externalId, 'shown');
+    return out;
+  }
+  const [{ data: advertisers }, { data: existing }] = await Promise.all([
+    admin.from('advertisers').select('key, name, status'),
+    admin.from('items').select('external_id, market_json').eq('source', board.source).in('external_id', ads.map((a) => a.externalId)),
+  ]);
+  const book = bookFrom(advertisers ?? []);
+  const stored = new Map((existing ?? []).map((e) => [e.external_id, readStoredMarket(e.market_json)]));
+  for (const ad of ads) out.set(ad.externalId, gateStatus(ad, { moroccanOnly: true, book, stored: stored.get(ad.externalId) ?? null }));
+  return out;
 }
 
 // One page of rows: items (latest scan row, metrics), board membership in
 // rank order, metric snapshots, covers. Ads run for another objective than
-// the board's are left out. Returns how many ads are new to the board.
-async function ingest(admin: AdminClient, board: { id: string; type: string; value: string; source: string; objective: string | null }, rows: Record<string, unknown>[], offset: number): Promise<number> {
+// the board's are left out, and a Moroccan board gates the rest. Returns how
+// many ads are new to the board.
+async function ingest(admin: AdminClient, board: IngestBoard, rows: Record<string, unknown>[], offset: number): Promise<number> {
   const now = new Date().toISOString();
   const plan = planIngest(board, rows, offset, now);
   if (!plan.items.length) return 0;
+  const gate = await gateFor(admin, board, plan.ads);
 
   const { data: saved, error } = await admin.from('items')
     .upsert(plan.items, { onConflict: 'source,external_id' })
@@ -153,7 +193,7 @@ async function ingest(admin: AdminClient, board: { id: string; type: string; val
   const { data: known } = await admin.from('board_items').select('item_id').eq('watchlist_id', board.id).in('item_id', ids);
   const knownIds = new Set((known ?? []).map((k) => k.item_id));
   const { error: boardError } = await admin.from('board_items').upsert(
-    saved.map((s) => ({ watchlist_id: board.id, item_id: s.id, rank: plan.ranks.get(s.external_id) ?? null, last_seen_at: now })),
+    saved.map((s) => ({ watchlist_id: board.id, item_id: s.id, rank: plan.ranks.get(s.external_id) ?? null, last_seen_at: now, status: gate.get(s.external_id) ?? 'shown' })),
     { onConflict: 'watchlist_id,item_id' },
   );
   if (boardError) throw new Error(`Add ads to the board: ${boardError.message}`);

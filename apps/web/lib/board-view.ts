@@ -1,4 +1,5 @@
 import { checkMarket, labelText, REGION_NAMES, scannedAd, scanVideoUrl, searchTerms, sourceLabel, termsLabel, type Breakdown, type MarketCheck, type MarketVerdict, type Tables } from '@content-lab/core';
+import { readStoredMarket, type GateStatus } from './gate';
 
 // Everything the board shows, computed from database rows. Pure, so the
 // server loader and the tests share it.
@@ -27,7 +28,9 @@ export type BoardAd = {
   transcript: string | null;
   // Whether it looks made for Moroccan shoppers, from its text (and its
   // speech and on-screen text once decoded).
-  market: MarketCheck;
+  market: MarketCheck & { via?: string[]; manual?: boolean };
+  // Where the Moroccan gate put it on this board.
+  gate?: GateStatus;
   // When a scan last returned this ad for the board.
   seenAt?: string | null;
 };
@@ -85,14 +88,23 @@ export function toBoardAd(item: ItemRow, rank: number | null, labels: ClassRow |
     } : null,
     breakdown,
     transcript: media?.transcript ?? null,
-    // The model's own summary is left out: only what the ad says and shows.
-    market: checkMarket({
-      texts: [scanned?.caption, item.advertiser, scanned?.advertiser, media?.ocr_text, media?.transcript, breakdown?.hook.text, breakdown?.offer, breakdown?.cta],
-      language: (l?.language as string | null) ?? null,
-      spokenLanguage: media?.transcript_lang ?? null,
-      landingUrl: typeof scan?.landingPageUrl === 'string' ? scan.landingPageUrl : null,
-    }),
+    market: marketOf(item, scanned, media, l, breakdown),
   };
+}
+
+// The team's call first, then the landing page and cover check, then what the
+// ad says and shows (with its decode). The model's own summary is left out.
+function marketOf(item: ItemRow, scanned: ReturnType<typeof scannedAd>, media: MediaRow | null, labels: Record<string, unknown> | null, breakdown: Breakdown | null): BoardAd['market'] {
+  const stored = readStoredMarket(item.market_json);
+  if (stored?.manual) return { verdict: stored.verdict, elsewhere: stored.elsewhere, reasons: stored.reasons, via: stored.via, manual: true };
+  if (stored && stored.verdict !== 'unclear') return { verdict: stored.verdict, elsewhere: stored.elsewhere, reasons: stored.reasons, via: stored.via };
+  const text = checkMarket({
+    texts: [scanned?.caption, item.advertiser, scanned?.advertiser, media?.ocr_text, media?.transcript, breakdown?.hook.text, breakdown?.offer, breakdown?.cta],
+    language: (labels?.language as string | null) ?? null,
+    spokenLanguage: media?.transcript_lang ?? null,
+    landingUrl: stored?.landing_url ?? null,
+  });
+  return stored ? { ...text, via: stored.via } : text;
 }
 
 export type MarketFilter = 'all' | MarketVerdict;
