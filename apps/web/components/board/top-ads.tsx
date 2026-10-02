@@ -31,7 +31,8 @@ export function TopAds({
         <p className="mono text-faint">by {rank === 'ctr' ? 'CTR' : 'views'}</p>
       </div>
       {/* Padding inside the scroll area so the selection ring is never clipped. */}
-      <ol className="no-scrollbar -m-1.5 flex gap-2 overflow-x-auto p-1.5 xl:grid xl:max-h-[572px] xl:grid-cols-3 xl:overflow-y-auto">
+      {/* data-tiles and data-tile: where the map's covers fly in from (perf-map.tsx). */}
+      <ol data-tiles className="no-scrollbar -m-1.5 flex gap-2 overflow-x-auto p-1.5 xl:grid xl:max-h-[572px] xl:grid-cols-3 xl:overflow-y-auto">
         {ads.map((ad, i) => {
           const selected = ad.id === selectedId;
           const value = ad.metrics[rank];
@@ -39,6 +40,7 @@ export function TopAds({
             <li key={ad.id} className={`w-[76px] shrink-0 xl:w-auto ${!all && i >= SHOWN ? 'xl:hidden' : ''}`}>
               <button
                 type="button"
+                data-tile={ad.id}
                 onClick={() => onSelect(ad.id)}
                 aria-pressed={selected}
                 aria-label={`#${i + 1} ${ad.advertiser ?? ad.handle ?? 'Unknown advertiser'}, ${rank === 'ctr' ? 'CTR' : 'views'} ${formatCount(value)}${ad.decode.status === 'done' ? ', decoded' : ''}`}

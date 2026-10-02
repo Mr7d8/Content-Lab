@@ -2,7 +2,7 @@
 
 import { scaleLinear, scaleLog } from 'd3-scale';
 import { AnimatePresence, motion } from 'motion/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { axesFor, formatCount, median, spreadPoints, type BoardAd } from '@/lib/board-view';
 import { Cover } from './cover';
 import { Glow, ProgressiveBlur } from './glass';
@@ -19,11 +19,27 @@ const fmt = (axis: 'likes' | 'views' | 'ctr', v: number | undefined) => (v === u
 
 type Rect = { x0: number; y0: number; x1: number; y1: number };
 
-// Covers arrive one after another in rank order, the whole map in about
-// 1.6 s however many ads it has (a short board goes a little slower).
+// Covers fly in from their tiles in the Top ads list, one after another in
+// rank order: departures spread over about 1.6 s however many ads there are
+// (a short board goes a little slower), each flight 0.8 s. The flight eases
+// in and out, so it is seen leaving its tile, not only landing.
 const ENTRY_S = 1.6;
-const entryDelay = (i: number, n: number) => i * Math.min(0.05, ENTRY_S / Math.max(1, n));
-const EASE_OUT = [0.22, 1, 0.36, 1] as const;
+const FLY_S = 0.8;
+const EASE_FLY = [0.45, 0, 0.2, 1] as const;
+
+// Where a cover takes off, relative to the map, and when (performance.now()).
+type Takeoff = { x: number; y: number; scale: number; at: number };
+
+// The center and width of an ad's tile in the Top ads list (top-ads.tsx marks
+// them with data-tile), kept inside the list's visible box. A tile that is
+// hidden (past "Show all") leaves from the bottom of the list, at about half
+// a tile's size, so that stream stays light.
+function tileSpot(id: string, list: DOMRect, tileW: number): { cx: number; cy: number; w: number } {
+  const r = document.querySelector(`[data-tile="${CSS.escape(id)}"]`)?.getBoundingClientRect();
+  if (!r || !r.width) return { cx: list.left + list.width / 2, cy: list.bottom, w: tileW / 2 };
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+  return { cx: clamp(r.left + r.width / 2, list.left, list.right), cy: clamp(r.top + r.height / 2, list.top, list.bottom), w: r.width };
+}
 
 // Every ad as its cover, placed by its two numbers. Decoded ads wear a blue
 // ring;
@@ -109,6 +125,33 @@ export function PerfMap({
       my: median(ys),
     };
   }, [plotted, axes.x, axes.y, axes.yLog, W, H, T.w, T.h, M.left, M.right, M.top, M.bottom, narrow]);
+
+  // Takeoffs for covers new to the map, measured before they paint (a cover
+  // shows only once it has one). Ads that leave the map forget theirs, so
+  // they fly in again when they come back, as with the earlier-scans toggle.
+  const takeoffs = useRef(new Map<string, Takeoff>());
+  const [, setMeasured] = useState(0);
+  useLayoutEffect(() => {
+    const ids = new Set(plotted.map((a) => a.id));
+    for (const id of takeoffs.current.keys()) if (!ids.has(id)) takeoffs.current.delete(id);
+    const fresh = plotted.filter((a) => !takeoffs.current.has(a.id));
+    const el = wrap.current;
+    if (!fresh.length || !el) return;
+    const box = el.getBoundingClientRect();
+    const list = document.querySelector('[data-tiles]')?.getBoundingClientRect();
+    const tileW = Array.from(document.querySelectorAll('[data-tile]'), (t) => t.getBoundingClientRect().width).find((w) => w > 0) ?? T.w * 2;
+    const step = Math.min(0.05, ENTRY_S / fresh.length) * 1000;
+    const now = performance.now();
+    fresh.forEach((a, k) => {
+      const p = geometry.at.get(a.id);
+      // No list on the page: in from the map's left edge, at the cover's height.
+      const spot = list?.width ? tileSpot(a.id, list, tileW) : { cx: box.left - T.w, cy: box.top + (p?.y ?? H / 2), w: T.w };
+      takeoffs.current.set(a.id, { x: spot.cx - box.left - T.w / 2, y: spot.cy - box.top - T.h / 2, scale: Math.min(4, Math.max(1, spot.w / T.w)), at: now + k * step });
+    });
+    setMeasured((n) => n + 1);
+    // geometry and T follow plotted and the width; a new takeoff is only needed for new ads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plotted]);
 
   const point = (e: React.PointerEvent) => {
     const r = (wrap.current as HTMLDivElement).getBoundingClientRect();
@@ -208,9 +251,13 @@ export function PerfMap({
           </text>
         </svg>
 
-        {plotted.map((ad, i) => {
+        {plotted.map((ad) => {
           const p = geometry.at.get(ad.id);
-          if (!p) return null;
+          const from = takeoffs.current.get(ad.id);
+          if (!p || !from) return null;
+          // Left to wait before this cover takes off; 0 once it has landed, so
+          // later moves (a resize, a filter) start at once.
+          const wait = Math.max(0, (from.at - performance.now()) / 1000);
           const selected = ad.id === selectedId;
           const isPicked = picked.has(ad.id);
           const faded = dimmed(ad);
@@ -226,19 +273,26 @@ export function PerfMap({
               onPointerLeave={() => setHovered((h) => (h === ad.id ? null : h))}
               onFocus={() => setHovered(ad.id)}
               onBlur={() => setHovered((h) => (h === ad.id ? null : h))}
-              // Placed with transforms, so moves and the selection scale stay
-              // on the GPU; no delay here, so a click answers at once.
-              initial={false}
+              // Placed with transforms, so the flight, later moves and the
+              // selection scale stay on the GPU. Only the flight waits its
+              // turn; the selection scale answers a click at once.
+              initial={{ x: from.x, y: from.y, opacity: 0 }}
               animate={{ x: p.x - T.w / 2, y: p.y - T.h / 2, scale: selected ? 1.35 : 1, opacity: faded ? 0.14 : 1 }}
-              transition={{ type: 'spring', stiffness: 320, damping: 32, opacity: { duration: 0.25 } }}
+              transition={{
+                x: { duration: FLY_S, ease: EASE_FLY, delay: wait },
+                y: { duration: FLY_S, ease: EASE_FLY, delay: wait },
+                // Shows up on its tile at takeoff, then fades only for a format filter.
+                opacity: { duration: wait > 0 ? 0.1 : 0.25, delay: wait },
+                scale: { type: 'spring', stiffness: 320, damping: 32 },
+              }}
               style={{ width: T.w, height: T.h, zIndex: selected ? 30 : isPicked ? 20 : done ? 10 : 1 }}
               className="absolute left-0 top-0 rounded-[6px] outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
-              {/* The entry, once per cover: its targets never change, so it does not replay. */}
+              {/* Leaves at its tile's size and shrinks on the way; the target never changes, so it does not replay. */}
               <motion.span
-                initial={{ opacity: 0, scale: 0.6, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                transition={{ duration: 0.55, ease: EASE_OUT, delay: entryDelay(i, plotted.length) }}
+                initial={{ scale: from.scale }}
+                animate={{ scale: 1 }}
+                transition={{ duration: FLY_S, ease: EASE_FLY, delay: wait }}
                 className={`relative block h-full w-full overflow-hidden rounded-[6px] bg-fill ${
                   selected
                     ? 'shadow-[0_0_0_2px_#fff,0_0_0_4px_var(--accent),0_8px_20px_rgba(10,132,255,.45)]'
