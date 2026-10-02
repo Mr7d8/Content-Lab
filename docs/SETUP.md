@@ -1,29 +1,39 @@
 # Setup
 
-From an empty Supabase project to a first pilot run. Everything targets free tiers first; TypeSafe Jev is the one paid AI service (well under a cent per ad).
+From an empty Supabase project to a first decoded board. Everything runs in the dashboard on Vercel: there is no worker to deploy.
 
 ## 1. Accounts and keys
 
 | Service | Plan | What you need |
 | --- | --- | --- |
 | Supabase | Free | A project: Project URL, anon (publishable) key, service_role key |
-| Vercel | Hobby (non-commercial; move to Pro if this becomes a Wasal tool) | A project for `apps/web` |
-| Apify | Free monthly credit | API token |
-| Groq | Free tier | API key (transcription) |
-| Google AI Studio | Gemini free tier | API key (vision pass, brief writing) |
-| TypeSafe | Paid, no free tier | API key (Jev classification) |
-| Anthropic | Optional | API key, only if `VISION_PROVIDER` or `BRIEF_PROVIDER` is `claude` |
+| Vercel | Hobby (move to Pro if this becomes a Wasal tool) | A project for `apps/web` |
+| Apify | Free monthly credit, then pay per result | API token |
+| Google AI Studio | Billing on | Gemini API key (decoding) |
+| TypeSafe | Paid | API key (Jev classification) |
+| Anthropic | Optional | API key, only if `BRIEF_PROVIDER` is `claude` |
 
-Gemini's free tier may use prompts to improve Google's models. That is fine for public ads; never send Wasal's own ad data (Phase 3) through it.
+Decoding sends whole videos to Gemini, which the free tier rate limits after a few ads, so turn billing on for the key. With billing on, Google does not use the prompts to train its models.
+
+What things cost (estimates, checked against the bills):
+
+| Action | Cost |
+| --- | --- |
+| Scan of 30 ads | about $0.10 (Apify, pay per result) |
+| Decode of one ad | about $0.01 to $0.02 (Gemini video plus Jev) |
+
+Both count toward the monthly cap set in the spend chip on the board ($5 by default).
 
 ## 2. Database
 
-1. Create the Supabase project (Postgres 15 or later; new projects already are).
-2. Apply the migrations in order, either with the Supabase CLI (`supabase link`, then `supabase db push`) or by pasting each file from `supabase/migrations/` into the SQL editor:
-   - `20261001000000_init.sql`: tables, RLS, the private `frames` bucket, Realtime.
-   - `20261001000100_first_sweep_watchlists.sql`: the first sweep watchlists.
-   - `20261002000000_research_mode.sql`: research mode (watchlist schedule columns, `app_settings` with the monthly cap, `month_spend_usd()`).
+1. Create the Supabase project (Postgres 15 or later).
+2. Apply the migrations in order, with the Supabase CLI (`supabase link`, then `supabase db push`) or by pasting each file from `supabase/migrations/` into the SQL editor:
+   - `20261001000000_init.sql`: tables, RLS, Realtime.
+   - `20261001000100_first_sweep_watchlists.sql`: the first boards.
+   - `20261002000000_research_mode.sql`: schedules, `app_settings` with the monthly cap, `month_spend_usd()`.
    - `20261002000100_close_functions_to_anon.sql`: signed-out visitors cannot call the app's functions.
+   - `20261003000000_v2_boards.sql`: board membership, scan and decode status, the public `covers` bucket, decode spend.
+   - `20261003000100_scan_json.sql`: the latest scan row per ad.
 3. Add yourself to the allowlist (only listed emails can see any data):
 
    ```sql
@@ -32,75 +42,59 @@ Gemini's free tier may use prompts to improve Google's models. That is fine for 
 
 4. Authentication > URL Configuration:
    - **Site URL**: your dashboard URL, for example `https://content-lab-iota.vercel.app`. New projects default to `http://localhost:3000`, which sends magic links to your own computer.
-   - **Redirect URLs**: `https://content-lab-iota.vercel.app/auth/callback`, `https://*-mr7d8s-projects.vercel.app/auth/callback` (previews) and `http://localhost:3000/auth/callback` (local work). Supabase only honours redirects on this list; anything else falls back to the Site URL.
+   - **Redirect URLs**: `https://content-lab-iota.vercel.app/auth/callback`, `https://*-mr7d8s-projects.vercel.app/auth/callback` (previews) and `http://localhost:3000/auth/callback` (local work).
 
-   Email magic links are on by default.
+To check the SQL on a throwaway local Postgres: `DATABASE_URL=postgres://... pnpm db:check`. After changing a migration, regenerate types with `pnpm db:types`.
 
-To check the SQL itself on a throwaway local Postgres: `DATABASE_URL=postgres://... pnpm db:check` (23 checks). After changing a migration, regenerate types with `pnpm db:types` (or `supabase gen types typescript`).
+## 3. Dashboard on Vercel
 
-## 3. Environment
+Create a Vercel project from this repository with the root directory `apps/web` (framework: Next.js). Add these environment variables:
 
-Copy `.env.example` to `.env` (worker and scripts) and to `apps/web/.env.local` (dashboard), then fill in the keys. The dashboard only needs the public Supabase values plus `APIFY_TOKEN` and `APIFY_WORKER_ACTOR_ID` to start runs; the service_role key never goes into the dashboard.
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (server only; used after the team check, to save scans, covers and decodes)
+- `APIFY_TOKEN`
+- `GEMINI_API_KEY`, `TYPESAFE_API_KEY`
+- `CRON_SECRET`: any long random string. Vercel Cron sends it to the daily scan route, and it signs the Apify webhook that finishes a scan when no board is open.
+- optionally `NEXT_PUBLIC_SITE_URL`, `GEMINI_MODEL`, `JEV_MODEL`, `APIFY_CREATIVE_CENTER_ACTOR_ID`, `APIFY_TIKTOK_ACTOR_ID`
+
+Never prefix a secret with `NEXT_PUBLIC_`: that ships it to the browser. Vercel only applies new variables to new deployments, so redeploy after changing them.
+
+Decodes run up to 5 minutes per ad, which needs Fluid compute (on by default for new Vercel projects).
+
+## 4. Local development
 
 ```sh
 pnpm install
-pnpm run doctor            # presence checks, no network
-pnpm run doctor --online   # also checks each key against its provider (free calls only)
+cp .env.example apps/web/.env.local   # fill in the keys
+pnpm run doctor                        # presence checks, no network
+pnpm run doctor --online               # checks each key against its provider (free calls only)
+pnpm dev
 ```
 
-## 4. Worker on Apify
+## 5. Scheduled scans
 
-The worker is an Apify actor in `apps/worker`. Its `.actor/actor.json` builds from the repository root so the shared `packages/core` is included.
+`apps/web/vercel.json` declares a Vercel Cron that calls `/api/cron/sweep` every day at 05:00 UTC (06:00 in Morocco). It starts a scan for each board that is due (weekly or monthly, set in the board menu) under the monthly cap. Boards set to manual only scan when you click **Scan now**. The daily scans can be switched off in the spend chip.
 
-1. Install the CLI and log in: `npm i -g apify-cli`, then `apify login`.
-2. From `apps/worker`, run `apify push`. Alternatively, in the Apify console create an actor with the source type **Git repository** and this Git URL (branch and folder go after `#`, not as a GitHub `tree/` link):
+A scan started by the cron finishes on its own: Apify calls `/api/apify/webhook` when the scraper ends, and the dashboard pulls the results in. An open board does the same every few seconds, so ads appear as they arrive.
 
-   ```
-   https://github.com/Mr7d8/Content-Lab.git#main:apps/worker
-   ```
-3. Nothing to configure on the actor: every key lives in Vercel (section 5), and the dashboard passes them in the actor input each time it starts the worker. The keys go in fields marked secret in `.actor/input_schema.json`, which Apify stores encrypted; the worker decrypts them on start. The dashboard also sets each run's memory and timeout. (Variables set on the actor itself still work, as a fallback; the dashboard's values win.)
-4. Put the actor id (shown in the console URL, or `yourname~content-lab-worker`) in the dashboard's `APIFY_WORKER_ACTOR_ID`.
-5. After code changes land on `main`, click **Build** on the actor so it runs the new code.
+## 6. First board
 
-Locally, the same code runs with `pnpm worker:dev --run <run id>` or `pnpm worker:dev --sweep` (needs FFmpeg).
-
-## 5. Dashboard on Vercel
-
-Create a Vercel project from this repository with the root directory `apps/web` (framework: Next.js). Add:
-
-- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `APIFY_TOKEN`, `APIFY_WORKER_ACTOR_ID`
-- the worker's keys, passed on to it: `SUPABASE_SERVICE_ROLE_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `TYPESAFE_API_KEY`, and optionally `ANTHROPIC_API_KEY`, `VISION_PROVIDER`, `GEMINI_MODEL`, `JEV_MODEL`, `APIFY_CREATIVE_CENTER_ACTOR_ID` (default `fetch_cat~tiktok-ads-library-scraper`). They stay server-side: never prefix them with `NEXT_PUBLIC_`.
-- `CRON_SECRET`: any long random string; Vercel Cron sends it to the daily sweep route.
-- optionally `NEXT_PUBLIC_SITE_URL` for magic link redirects.
-
-Vercel only applies new variables to new deployments, so redeploy after changing them. Locally: `pnpm dev`.
-
-## 6. Research mode (daily sweep)
-
-Watchlists refresh on their own: `apps/web/vercel.json` declares a Vercel Cron that calls `/api/cron/sweep` every day at 05:00 UTC (06:00 in Morocco). The route checks `CRON_SECRET` and starts the worker with `{ "mode": "sweep" }` and the dashboard's keys. Nothing to set up in Apify. See [research-mode.md](research-mode.md) for how a sweep picks ads.
-
-Each day the sweep runs the watchlists that are due (weekly or monthly, most overdue first), keeps the best new ads of each and processes them. It stops when this month's spend reaches the cap on **Collect** ($5 by default), after about 40 minutes (the rest wait for the next day), or when the daily sweep is switched off there. **Research now** on Collect runs one watchlist immediately under the same caps.
-
-## 7. First pilot
-
-1. Open `/demo` to see the animated views on synthetic data (no keys needed).
-2. Sign in, open **Collect**, paste three TikTok video links, keep the suggested spend cap, and start.
-3. Follow the run on **Live**. Each item goes fetch, extract, transcribe, vision, classify.
-4. Check the results in **Library** and correct any label that is wrong; corrections are kept next to the model output.
-5. Then do the 10 hand-picked strong ads from the plan's checklist to judge label quality before any scraping.
+1. Sign in. With no boards yet, click **Create your first board**; otherwise open the board switcher and pick **New board**.
+2. Choose Top ads (Creative Center), a country and an objective, and create it. The first scan starts at once and ads stream in within a minute or two.
+3. Click any cover to open it in the inspector, then **Decode this ad**. Or **Decode top 10**, or drag across the performance map to pick several.
+4. When a few are decoded, "Which formats win?" fills in.
 
 ## Known limits
 
-- **Creative Center** searches use `fetch_cat/tiktok-ads-library-scraper`; its input and output field names follow its listing and are checked against a first real run. Pasted Creative Center links still need an actor that accepts detail URLs, or they are flagged for review. TikTok video links work through `clockworks/tiktok-scraper`.
-- **Morocco in Creative Center** is unconfirmed. If the Morocco sweeps come back empty, add organic keyword or hashtag watchlists for Morocco instead.
-- **Field names** of the TikTok scraper output and the Jev request shape follow their documentation and Creator Lab's working client; confirm both on the first pilot.
-- **Percentiles** on the performance map are ranked within each source from its primary metric (views for organic, CTR for Creative Center) until the Phase 2 scoring step fills `scores`.
+- **Creative Center video links** expire after about 6 hours. Covers are cached, so the board stays visual; the inspector's player needs a recent scan. Decoding fetches a fresh copy of the video itself.
+- **Industry filters** need Creative Center keys such as `label_22110000000`. Boards with a plain word (for example `ecommerce`) scan every industry for their country and objective.
+- **Budget tier** in the inspector is Creative Center's cost index (0, 1, 2), shown as Low, Medium, High.
+- Videos over 14 MB are decoded from a lower resolution copy, when the source has one.
 
 ## Development
 
 ```sh
-pnpm test        # Vitest: core, worker (generated FFmpeg clips, no paid calls), web
+pnpm test        # Vitest: core and web, no paid calls
 pnpm typecheck
 pnpm build
 pnpm db:check    # migrations and RLS checks on a throwaway Postgres

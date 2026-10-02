@@ -1,9 +1,6 @@
 import { z } from 'zod';
 
-// Bump when the vision prompt or this schema changes (media.vision_version).
-export const VISION_VERSION = 'vision-v1';
-
-// What the vision pass returns for one keyframe.
+// What a decode describes for one second of the video (media.frames_json).
 export const VisionFrame = z.object({
   second: z.number().nonnegative(),
   description: z.string(),
@@ -24,10 +21,7 @@ export const VisionFrame = z.object({
 });
 export type VisionFrame = z.infer<typeof VisionFrame>;
 
-export const VisionOutput = z.object({ frames: z.array(VisionFrame).min(1) });
-export type VisionOutput = z.infer<typeof VisionOutput>;
-
-// Keyframe schedule: every second for 0 to 3 s, then every 3 s to the end.
+// Seconds to describe: every second for 0 to 3 s, then every 3 s to the end.
 export function keyframeSeconds(durationS: number): number[] {
   if (!Number.isFinite(durationS) || durationS <= 0) return [0];
   const out: number[] = [];

@@ -1,10 +1,8 @@
 import { alignDecodedFrames, DecodeOutput } from '../decode';
 import { DECODE_SYSTEM, decodeJsonSchema, decodeUserText } from '../prompts/decode';
-import { alignToFrames, VISION_SYSTEM, visionJsonSchema, visionUserText } from '../prompts/vision';
-import { VisionOutput } from '../vision';
 import { request, type RequestOptions } from './http';
 import type { Pacer } from './pacer';
-import type { TextWriter, VideoDecoder, VisionProvider } from './types';
+import type { TextWriter, VideoDecoder } from './types';
 
 // Tracks Google's current Flash model; pin GEMINI_MODEL to a version for reproducible caching.
 export const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest';
@@ -38,35 +36,6 @@ async function generate(apiKey: string, model: string, body: unknown, { pacer, .
   const text = candidate?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
   if (!text) throw new Error(`Gemini returned no content (${candidate?.finishReason ?? 'no candidate'})`);
   return { text, inputTokens: json.usageMetadata?.promptTokenCount ?? null, outputTokens: json.usageMetadata?.candidatesTokenCount ?? null };
-}
-
-export function geminiVision(apiKey: string, options: Options = {}): VisionProvider {
-  const model = options.model || DEFAULT_GEMINI_MODEL;
-  return {
-    name: `gemini:${model}`,
-    async describeFrames(frames, context) {
-      const body = {
-        systemInstruction: { parts: [{ text: VISION_SYSTEM }] },
-        contents: [{
-          role: 'user',
-          parts: [
-            ...frames.flatMap((f) => [{ text: `Keyframe at ${f.second}s:` }, { inlineData: { mimeType: f.mimeType, data: toBase64(f.data) } }]),
-            { text: visionUserText(frames, context) },
-          ],
-        }],
-        generationConfig: { responseMimeType: 'application/json', responseJsonSchema: visionJsonSchema(), temperature: 0 },
-      };
-      const result = await generate(apiKey, model, body, options);
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(result.text);
-      } catch {
-        throw new Error('Gemini returned invalid JSON for the vision pass');
-      }
-      const output = alignToFrames(VisionOutput.parse(parsed), frames);
-      return { output, inputTokens: result.inputTokens, outputTokens: result.outputTokens };
-    },
-  };
 }
 
 export function geminiWriter(apiKey: string, options: Options = {}): TextWriter {

@@ -1,83 +1,36 @@
 import { describe, expect, it, vi } from 'vitest';
-import { claudeVision, createAIProviders, geminiVision, jevClassifier, parseJevAnswers } from '../src/ai';
+import { claudeWriter, createAIProviders, geminiDecoder, jevClassifier, parseJevAnswers } from '../src/ai';
 import { buildQuestions } from '../src/classify';
-import { frame } from './fixtures';
 
-const frames = [
-  { second: 0, mimeType: 'image/webp', data: new Uint8Array([1, 2, 3]) },
-  { second: 1, mimeType: 'image/webp', data: new Uint8Array([4, 5, 6]) },
-];
-const context = { source: 'tiktok_organic', advertiser: 'temu', caption: null, durationS: 12 };
-const visionJson = { frames: [frame(5, { product: true }), frame(9, { price: true }, { on_screen_text: ['9,99 €'] })] };
-
-describe('gemini vision', () => {
-  it('sends every keyframe inline with a JSON schema and pins seconds to the input frames', async () => {
-    const fetchImpl = vi.fn(async () => Response.json({
-      candidates: [{ content: { parts: [{ text: JSON.stringify(visionJson) }] }, finishReason: 'STOP' }],
-      usageMetadata: { promptTokenCount: 700, candidatesTokenCount: 300 },
-    }));
-    const vision = geminiVision('AIzaTEST', { model: 'gemini-test', fetchImpl: fetchImpl as unknown as typeof fetch });
-    const result = await vision.describeFrames(frames, context);
-    expect(vision.name).toBe('gemini:gemini-test');
-    expect(result.output.frames.map((f) => f.second)).toEqual([0, 1]);
-    expect(result.inputTokens).toBe(700);
-
-    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-test:generateContent');
-    expect((init.headers as Record<string, string>)['x-goog-api-key']).toBe('AIzaTEST');
-    const body = JSON.parse(String(init.body));
-    const images = body.contents[0].parts.filter((p: { inlineData?: unknown }) => p.inlineData);
-    expect(images).toEqual([
-      { inlineData: { mimeType: 'image/webp', data: 'AQID' } },
-      { inlineData: { mimeType: 'image/webp', data: 'BAUG' } },
-    ]);
-    expect(body.generationConfig.responseMimeType).toBe('application/json');
-    expect(body.generationConfig.responseJsonSchema.$schema).toBeUndefined();
-    expect(JSON.stringify(body.generationConfig.responseJsonSchema)).not.toContain('9007199254740991');
-  });
-
-  it('rejects a frame count mismatch and blocked prompts', async () => {
-    const one = vi.fn(async () => Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify({ frames: [frame(0)] }) }] } }] }));
-    await expect(geminiVision('k', { fetchImpl: one as unknown as typeof fetch }).describeFrames(frames, context)).rejects.toThrow('1 frames for 2 keyframes');
+describe('gemini', () => {
+  it('surfaces blocked prompts and empty answers', async () => {
+    const video = { data: new Uint8Array([1, 2, 3]), mimeType: 'video/mp4' };
+    const context = { source: 'tiktok_creative_center', advertiser: null, caption: null, durationS: 2 };
     const blocked = vi.fn(async () => Response.json({ promptFeedback: { blockReason: 'SAFETY' } }));
-    await expect(geminiVision('k', { fetchImpl: blocked as unknown as typeof fetch }).describeFrames(frames, context)).rejects.toThrow('blocked');
+    await expect(geminiDecoder('k', { fetchImpl: blocked as unknown as typeof fetch }).decode(video, [0, 1], context)).rejects.toThrow('blocked');
+    const empty = vi.fn(async () => Response.json({ candidates: [{ content: { parts: [] }, finishReason: 'MAX_TOKENS' }] }));
+    await expect(geminiDecoder('k', { fetchImpl: empty as unknown as typeof fetch }).decode(video, [0, 1], context)).rejects.toThrow('no content (MAX_TOKENS)');
   });
 });
 
-describe('claude vision', () => {
-  it('uses structured output, base64 WebP images and default fallbacks', async () => {
-    const fetchImpl = vi.fn(async () => Response.json({
-      id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-opus-5-5',
-      content: [{ type: 'text', text: JSON.stringify(visionJson) }],
-      stop_reason: 'end_turn', stop_sequence: null, stop_details: null,
-      usage: { input_tokens: 1500, output_tokens: 400 },
-    }));
-    const vision = claudeVision('sk-ant-test', { fetchImpl: fetchImpl as unknown as typeof fetch });
-    const result = await vision.describeFrames(frames, context);
-    expect(vision.name).toBe('claude:claude-opus-5-5');
-    expect(result.output.frames[1]?.on_screen_text).toEqual(['9,99 €']);
-    expect(result.output.frames.map((f) => f.second)).toEqual([0, 1]);
-
-    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
-    expect(String(url)).toContain('/v1/messages');
-    const headers = new Headers(init.headers as ConstructorParameters<typeof Headers>[0]);
-    expect(headers.get('anthropic-beta')).toContain('server-side-fallback-2026-07-01');
-    const body = JSON.parse(String(init.body));
-    expect(body.model).toBe('claude-opus-5-5');
-    expect(body.fallbacks).toBe('default');
-    expect(body.output_config.effort).toBe('medium');
-    expect(body.output_config.format.type).toBe('json_schema');
-    const images = body.messages[0].content.filter((b: { type: string }) => b.type === 'image');
-    expect(images[0].source).toEqual({ type: 'base64', media_type: 'image/webp', data: 'AQID' });
-  });
-
+describe('claude writer', () => {
   it('surfaces refusals', async () => {
-    const fetchImpl = vi.fn(async () => Response.json({
-      id: 'msg_2', type: 'message', role: 'assistant', model: 'claude-opus-5-5', content: [],
-      stop_reason: 'refusal', stop_sequence: null, stop_details: { type: 'refusal', category: 'cyber', explanation: null },
-      usage: { input_tokens: 10, output_tokens: 0 },
-    }));
-    await expect(claudeVision('k', { fetchImpl: fetchImpl as unknown as typeof fetch }).describeFrames(frames, context)).rejects.toThrow('declined');
+    const fetchImpl = vi.fn(async () => new Response(
+      [
+        'event: message_start',
+        `data: ${JSON.stringify({ type: 'message_start', message: { id: 'msg_2', type: 'message', role: 'assistant', model: 'claude-opus-5-5', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 0 } } })}`,
+        '',
+        'event: message_delta',
+        `data: ${JSON.stringify({ type: 'message_delta', delta: { stop_reason: 'refusal', stop_sequence: null, stop_details: { type: 'refusal', category: 'cyber', explanation: null } }, usage: { output_tokens: 0 } })}`,
+        '',
+        'event: message_stop',
+        `data: ${JSON.stringify({ type: 'message_stop' })}`,
+        '',
+        '',
+      ].join('\n'),
+      { headers: { 'content-type': 'text/event-stream' } },
+    ));
+    await expect(claudeWriter('k', { fetchImpl: fetchImpl as unknown as typeof fetch }).write({ system: 's', user: 'u' })).rejects.toThrow('declined');
   });
 });
 
@@ -110,15 +63,16 @@ describe('jev', () => {
 
 describe('createAIProviders', () => {
   it('builds only the requested capabilities and picks providers by env', () => {
-    const ai = createAIProviders({ GEMINI_API_KEY: 'g', TYPESAFE_API_KEY: 't' }, ['vision', 'classifier']);
-    expect(ai.vision.name).toBe('gemini:gemini-flash-latest');
+    const ai = createAIProviders({ GEMINI_API_KEY: 'g', TYPESAFE_API_KEY: 't' }, ['decoder', 'classifier']);
+    expect(ai.decoder.name).toBe('gemini:gemini-flash-latest');
     expect(ai.classifier.model).toBe('jev-1.13.0');
-    const claude = createAIProviders({ VISION_PROVIDER: 'claude', ANTHROPIC_API_KEY: 'a' }, ['vision']);
-    expect(claude.vision.name).toBe('claude:claude-opus-5-5');
+    const claude = createAIProviders({ BRIEF_PROVIDER: 'claude', ANTHROPIC_API_KEY: 'a' }, ['briefWriter']);
+    expect(claude.briefWriter.name).toBe('claude:claude-opus-5-5');
   });
 
   it('names the missing key', () => {
     expect(() => createAIProviders({}, ['classifier'])).toThrow('Missing TYPESAFE_API_KEY');
-    expect(() => createAIProviders({ VISION_PROVIDER: 'openai' }, ['vision'])).toThrow('VISION_PROVIDER must be gemini or claude');
+    expect(() => createAIProviders({}, ['decoder'])).toThrow('Missing GEMINI_API_KEY');
+    expect(() => createAIProviders({ BRIEF_PROVIDER: 'openai' }, ['briefWriter'])).toThrow('BRIEF_PROVIDER must be gemini or claude');
   });
 });

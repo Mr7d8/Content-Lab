@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { joinOnScreenText, keyframeSeconds, VisionOutput } from '../src/vision';
+import { joinOnScreenText, keyframeSeconds } from '../src/vision';
 
 const frame = (second: number, text: string[]) => ({
   second,
@@ -22,12 +22,7 @@ describe('keyframeSeconds', () => {
   });
 });
 
-describe('vision output', () => {
-  it('validates frames', () => {
-    expect(VisionOutput.safeParse({ frames: [frame(0, ['-50%'])] }).success).toBe(true);
-    expect(VisionOutput.safeParse({ frames: [] }).success).toBe(false);
-  });
-
+describe('on-screen text', () => {
   it('joins on-screen text in frame order without repeats', () => {
     const text = joinOnScreenText([frame(3, ['Livraison gratuite']), frame(0, ['-50%', ' ']), frame(1, ['-50%'])]);
     expect(text).toBe('-50%\nLivraison gratuite');

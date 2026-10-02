@@ -17,5 +17,5 @@ export async function GET(request: NextRequest) {
   } else if (tokenHash && type) {
     ok = !(await supabase.auth.verifyOtp({ token_hash: tokenHash, type })).error;
   }
-  return NextResponse.redirect(new URL(ok ? '/library' : '/login?error=link', origin));
+  return NextResponse.redirect(new URL(ok ? '/b' : '/login?error=link', origin));
 }

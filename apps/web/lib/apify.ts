@@ -1,35 +1,4 @@
-// A new actor's default timeout (300 s) is too short for a run. One hour
-// caps a stuck run at about one compute unit.
-const RUN_OPTIONS = 'memory=1024&timeout=3600';
-
-// Starts the worker actor. Input is { runId } or { mode: 'sweep' }, plus the
-// dashboard's settings for the worker (see workerInput in lib/env.ts).
-export async function startWorkerActor(
-  input: Record<string, unknown>,
-  env: { token: string; workerActorId: string },
-  fetchImpl: typeof fetch = fetch,
-): Promise<{ ok: true; workerRunId: string } | { ok: false; message: string }> {
-  const actor = encodeURIComponent(env.workerActorId);
-  try {
-    const res = await fetchImpl(`https://api.apify.com/v2/acts/${actor}/runs?${RUN_OPTIONS}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${env.token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
-      signal: AbortSignal.timeout(20000),
-    });
-    if (!res.ok) {
-      const hint = res.status === 401 || res.status === 403 ? 'check APIFY_TOKEN' : res.status === 404 ? 'check APIFY_WORKER_ACTOR_ID' : `HTTP ${res.status}`;
-      return { ok: false, message: `Apify did not start the worker (${hint})` };
-    }
-    const body = (await res.json()) as { data?: { id?: string } };
-    if (!body.data?.id) return { ok: false, message: 'Apify response had no run id' };
-    return { ok: true, workerRunId: body.data.id };
-  } catch {
-    return { ok: false, message: 'Could not reach Apify to start the worker' };
-  }
-}
-
-// v2: the dashboard runs the scrapers itself.
+// The dashboard runs the scrapers itself through the Apify API.
 const API = 'https://api.apify.com/v2';
 
 export type ActorRun = {

@@ -2,9 +2,9 @@ import { createServerClient } from '@supabase/ssr';
 import { type NextRequest, NextResponse } from 'next/server';
 import { authLandingTarget } from './lib/auth-landing';
 
-// /demo shows synthetic data only. /api/cron/ and /api/apify/ check their own
-// secrets (Vercel Cron's bearer, the Apify webhook token).
-const PUBLIC_PATHS = ['/login', '/auth/', '/demo', '/api/cron/', '/api/apify/'];
+// /api/cron/ and /api/apify/ check their own secrets (Vercel Cron's bearer,
+// the Apify webhook token).
+const PUBLIC_PATHS = ['/login', '/auth/', '/api/cron/', '/api/apify/'];
 
 // Refreshes the Supabase session cookie on every navigation and sends
 // signed-out visitors to /login. Data access is still enforced by RLS.

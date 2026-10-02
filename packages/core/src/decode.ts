@@ -55,8 +55,8 @@ export function alignDecodedFrames(output: DecodeOutput, seconds: number[]): Dec
   return { ...output, frames: output.frames.map((f, i) => ({ ...f, second: seconds[i] as number })) };
 }
 
-// Estimated paid cost of one decode. Defaults follow Gemini Flash list prices
-// and DEFAULT_RATES for Jev; check them against the bills.
+// Estimated paid cost of one decode. Defaults follow Gemini Flash and Jev
+// list prices; check them against the bills.
 export type DecodeRates = { geminiInputPerMillionUsd: number; geminiOutputPerMillionUsd: number; jevPerMillionInputTokensUsd: number };
 export const DEFAULT_DECODE_RATES: DecodeRates = { geminiInputPerMillionUsd: 0.3, geminiOutputPerMillionUsd: 2.5, jevPerMillionInputTokensUsd: 0.042 };
 

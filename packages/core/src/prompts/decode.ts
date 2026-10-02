@@ -1,5 +1,5 @@
 import { DecodeOutput } from '../decode';
-import { providerJsonSchema } from './vision';
+import { providerJsonSchema } from './json-schema';
 
 // Versioned with DECODE_VERSION in decode.ts.
 export const DECODE_SYSTEM = `You decode a short TikTok ad or video for a creative research team that studies why ads work and briefs new ones.

@@ -1,24 +1,20 @@
-import { claudeVision, claudeWriter } from './claude';
-import { geminiDecoder, geminiVision, geminiWriter } from './gemini';
-import { groqTranscriber } from './groq';
+import { claudeWriter } from './claude';
+import { geminiDecoder, geminiWriter } from './gemini';
 import { jevClassifier } from './jev';
 import { createPacer } from './pacer';
-import type { Classifier, TextWriter, Transcriber, VideoDecoder, VisionProvider } from './types';
+import type { Classifier, TextWriter, VideoDecoder } from './types';
 
 export * from './types';
 export { ProviderError, request, delay } from './http';
 export { createPacer, type Pacer } from './pacer';
-export { groqTranscriber, isSpeech, parseGroqTranscript, GROQ_MODEL } from './groq';
-export { geminiDecoder, geminiVision, geminiWriter, DEFAULT_GEMINI_MODEL, MAX_INLINE_VIDEO_BYTES } from './gemini';
-export { claudeVision, claudeWriter, DEFAULT_CLAUDE_MODEL } from './claude';
+export { geminiDecoder, geminiWriter, DEFAULT_GEMINI_MODEL, MAX_INLINE_VIDEO_BYTES } from './gemini';
+export { claudeWriter, DEFAULT_CLAUDE_MODEL } from './claude';
 export { jevClassifier, parseJevAnswers, DEFAULT_JEV_MODEL } from './jev';
 
-// One interface for every AI call: transcription, the vision pass, Jev
-// classification and brief writing. Each capability is an adapter picked by
-// environment variables, so moving from Gemini to Claude is a config change.
+// One interface for every AI call: the video decode, Jev classification and
+// brief writing. Each capability is an adapter picked by environment
+// variables, so moving brief writing from Gemini to Claude is a config change.
 export interface AIProviders {
-  transcriber: Transcriber;
-  vision: VisionProvider;
   decoder: VideoDecoder;
   classifier: Classifier;
   briefWriter: TextWriter;
@@ -38,7 +34,7 @@ const rpm = (env: AIEnv, name: string, fallback: number) => {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 };
 
-export function providerChoice(env: AIEnv, name: 'VISION_PROVIDER' | 'BRIEF_PROVIDER'): 'gemini' | 'claude' {
+export function providerChoice(env: AIEnv, name: 'BRIEF_PROVIDER'): 'gemini' | 'claude' {
   const value = (env[name] ?? 'gemini').toLowerCase();
   if (value !== 'gemini' && value !== 'claude') throw new Error(`${name} must be gemini or claude`);
   return value;
@@ -48,20 +44,10 @@ export function providerChoice(env: AIEnv, name: 'VISION_PROVIDER' | 'BRIEF_PROV
 // clearly, and nothing else needs keys it never uses.
 export function createAIProviders<K extends Capability>(env: AIEnv, capabilities: readonly K[]): Pick<AIProviders, K> {
   const out: Partial<AIProviders> = {};
-  // One pacer per free-tier provider, shared by vision and brief writing.
+  // Brief writing may run on Gemini's free tier, so it is paced.
   const geminiPacer = createPacer(rpm(env, 'GEMINI_REQUESTS_PER_MINUTE', 10));
   for (const capability of capabilities) {
     switch (capability) {
-      case 'transcriber':
-        out.transcriber = groqTranscriber(required(env, 'GROQ_API_KEY', 'transcription'), {
-          pacer: createPacer(rpm(env, 'GROQ_REQUESTS_PER_MINUTE', 20)),
-        });
-        break;
-      case 'vision':
-        out.vision = providerChoice(env, 'VISION_PROVIDER') === 'claude'
-          ? claudeVision(required(env, 'ANTHROPIC_API_KEY', 'the vision pass on Claude'), { model: env.CLAUDE_MODEL || undefined })
-          : geminiVision(required(env, 'GEMINI_API_KEY', 'the vision pass'), { model: env.GEMINI_MODEL || undefined, pacer: geminiPacer });
-        break;
       case 'decoder':
         // Paid tier expected (billing on), so no free-tier pacer.
         out.decoder = geminiDecoder(required(env, 'GEMINI_API_KEY', 'decoding videos'), { model: env.GEMINI_MODEL || undefined });

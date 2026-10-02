@@ -12,10 +12,6 @@ export function sourceLabel(source: string): string {
   return (SOURCES as Record<string, { label: string }>)[source]?.label ?? source;
 }
 
-// How items entered a run.
-export const RUN_SOURCES = ['manual_import', 'tiktok_creative_center', 'tiktok_organic'] as const;
-export type RunSource = (typeof RUN_SOURCES)[number];
-
 // Region groups used by watchlists. Countries are ISO 3166-1 alpha-2.
 export const REGION_GROUPS: Readonly<Record<string, readonly string[]>> = {
   MENA: ['MA', 'DZ', 'TN', 'EG', 'SA', 'AE', 'KW', 'QA', 'BH', 'OM', 'JO', 'LB', 'IQ'],
