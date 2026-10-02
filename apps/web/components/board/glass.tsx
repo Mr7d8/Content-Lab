@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState } from 'react';
-import { AMBIENT_PURPLE, ambientPalette } from '@/lib/ambient';
+import { AMBIENT_PURPLE, ambientColor } from '@/lib/ambient';
 
 // A photo that melts into frosted glass toward the bottom: blur layers of
 // growing strength, each masked to a lower band.
@@ -43,21 +43,22 @@ export function Glow({ src, className = '' }: { src: string | null; className?: 
   );
 }
 
-const palettes = new Map<string, string[]>();
+const colors = new Map<string, string>();
+const GRID = 16;
 
-// The glow colors for a cover: a 3 by 2 grid of it, read once from a tiny
+// The glow color for a cover, read once from a 16 by 16 copy of it on a
 // canvas (see lib/ambient). The purple when there is no cover or it cannot
 // be read (no CORS).
-function usePalette(src: string | null): string[] {
-  const [colors, setColors] = useState<string[]>(() => (src && palettes.get(src)) || [AMBIENT_PURPLE]);
+function useCoverColor(src: string | null): string {
+  const [color, setColor] = useState<string>(() => (src && colors.get(src)) || AMBIENT_PURPLE);
   useEffect(() => {
-    if (!src) return setColors([AMBIENT_PURPLE]);
-    const known = palettes.get(src);
-    if (known) return setColors(known);
+    if (!src) return setColor(AMBIENT_PURPLE);
+    const known = colors.get(src);
+    if (known) return setColor(known);
     let live = true;
-    const done = (out: string[]) => {
-      palettes.set(src, out);
-      if (live) setColors(out);
+    const done = (out: string) => {
+      colors.set(src, out);
+      if (live) setColor(out);
     };
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -65,47 +66,42 @@ function usePalette(src: string | null): string[] {
     img.onload = () => {
       try {
         const c = document.createElement('canvas');
-        c.width = 3;
-        c.height = 2;
-        const ctx = c.getContext('2d');
+        c.width = GRID;
+        c.height = GRID;
+        const ctx = c.getContext('2d', { willReadFrequently: true });
         if (!ctx) throw new Error('no canvas');
-        ctx.drawImage(img, 0, 0, 3, 2);
-        const d = ctx.getImageData(0, 0, 3, 2).data;
-        done(ambientPalette(Array.from({ length: 6 }, (_, i) => [d[i * 4] ?? 0, d[i * 4 + 1] ?? 0, d[i * 4 + 2] ?? 0] as [number, number, number])));
+        ctx.drawImage(img, 0, 0, GRID, GRID);
+        const d = ctx.getImageData(0, 0, GRID, GRID).data;
+        done(ambientColor(Array.from({ length: GRID * GRID }, (_, i) => [d[i * 4] ?? 0, d[i * 4 + 1] ?? 0, d[i * 4 + 2] ?? 0] as [number, number, number])));
       } catch {
-        done([AMBIENT_PURPLE]);
+        done(AMBIENT_PURPLE);
       }
     };
-    img.onerror = () => done([AMBIENT_PURPLE]);
+    img.onerror = () => done(AMBIENT_PURPLE);
     img.src = src;
     return () => {
       live = false;
     };
   }, [src]);
-  return colors;
+  return color;
 }
 
 const alpha = (hsl: string, a: number) => hsl.replace(')', ` / ${a})`);
 
-// Where each glow color sits: the first behind the title, the others to the
-// sides. Wide, slow falloffs keep it soft.
+// One color, three soft pools: the strongest behind the title, fainter
+// echoes toward the corners. Wide, slow falloffs keep it blurry.
 const BLOBS = [
   { at: '40% 34%', size: '52% 78%', a: 0.5 },
-  { at: '72% 14%', size: '40% 62%', a: 0.38 },
-  { at: '12% 6%', size: '36% 56%', a: 0.32 },
+  { at: '72% 14%', size: '40% 62%', a: 0.23 },
+  { at: '12% 6%', size: '36% 56%', a: 0.19 },
 ];
 
-// A soft glow at the top of the page, in the selected ad's colors (purple
+// A soft glow at the top of the page in the selected ad's main color (purple
 // when the cover is gray). It fades out before the content below and
 // scrolls away with the page.
 export function Ambient({ src }: { src: string | null }) {
-  const colors = usePalette(src);
-  // One color still fills the hero: its echo takes the side spots, fainter.
-  const layers = BLOBS.map((b, i) => {
-    const c = colors[i] ?? colors[0] ?? AMBIENT_PURPLE;
-    const a = colors[i] ? b.a : b.a * 0.6;
-    return `radial-gradient(${b.size} at ${b.at}, ${alpha(c, a)} 0%, ${alpha(c, a * 0.45)} 38%, transparent 76%)`;
-  });
+  const color = useCoverColor(src);
+  const layers = BLOBS.map((b) => `radial-gradient(${b.size} at ${b.at}, ${alpha(color, b.a)} 0%, ${alpha(color, b.a * 0.45)} 38%, transparent 76%)`);
   return (
     <div
       aria-hidden
@@ -114,7 +110,7 @@ export function Ambient({ src }: { src: string | null }) {
     >
       <AnimatePresence initial={false}>
         <motion.div
-          key={colors.join()}
+          key={color}
           className="absolute inset-0"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
