@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { creativeCenterAd, creativeCenterScanInput, estimateScan, organicAd, organicScanInput, scanBudget, scanVideoUrl } from '../src/scan';
-import { fitsObjective } from '../src/sources';
+import { ANY_REGION_COUNTRIES, fitsObjective } from '../src/sources';
 
 // Shape of a real fetch_cat/tiktok-ads-library-scraper row (2026-10-02 scan).
 const ccRow = {
@@ -20,7 +20,7 @@ describe('scan inputs', () => {
   it('asks Creative Center for the board, with the period as text', () => {
     expect(creativeCenterScanInput(board)).toEqual({ period: '30', maxItems: 30, regions: ['MA'], objective: 'campaign_objective_conversion' });
     expect(creativeCenterScanInput({ ...board, type: 'industry', value: 'label_22110000000', objective: null })).toMatchObject({ industry: 'label_22110000000' });
-    expect(creativeCenterScanInput({ ...board, type: 'advertiser', value: 'Temu', region: null, period_days: 7 })).toEqual({ period: '7', maxItems: 30, keywords: ['Temu'], objective: 'campaign_objective_conversion' });
+    expect(creativeCenterScanInput({ ...board, type: 'advertiser', value: 'Temu', region: null, period_days: 7 })).toEqual({ period: '7', maxItems: 30, regions: [...ANY_REGION_COUNTRIES], keywords: ['Temu'], objective: 'campaign_objective_conversion' });
   });
 
   it('asks the TikTok scraper for metadata only', () => {

@@ -35,6 +35,14 @@ export const REGION_NAMES: Readonly<Record<string, string>> = {
   IQ: 'Iraq',
 };
 
+// "Any region" on Creative Center: given no country, the scraper searches the
+// US alone (a Shein board found 16 ads, all American), so any region means the
+// biggest Creative Center markets instead.
+export const ANY_REGION_COUNTRIES: readonly string[] = [
+  'US', 'GB', 'CA', 'AU', 'FR', 'DE', 'IT', 'ES', 'BR', 'MX', 'JP', 'KR',
+  'ID', 'TH', 'VN', 'MY', 'PH', 'SA', 'AE', 'EG', 'TR', 'MA',
+];
+
 // Countries a watchlist region covers; null means any region.
 export function expandRegion(region: string | null): string[] | null {
   if (region === null) return null;
