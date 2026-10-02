@@ -201,6 +201,8 @@ export type Database = {
           decode_error: string | null;
           decoded_at: string | null;
           decode_cost_usd: number;
+          scan_json: Json | null;
+          scanned_at: string | null;
         };
         Insert: {
           id?: string;
@@ -221,6 +223,8 @@ export type Database = {
           decode_error?: string | null;
           decoded_at?: string | null;
           decode_cost_usd?: number;
+          scan_json?: Json | null;
+          scanned_at?: string | null;
         };
         Update: {
           id?: string;
@@ -241,6 +245,8 @@ export type Database = {
           decode_error?: string | null;
           decoded_at?: string | null;
           decode_cost_usd?: number;
+          scan_json?: Json | null;
+          scanned_at?: string | null;
         };
         Relationships: [];
       };
