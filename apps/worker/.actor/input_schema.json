@@ -6,9 +6,16 @@
     "runId": {
       "title": "Run id",
       "type": "string",
-      "description": "The runs.id to process. The dashboard sets this when you start a run.",
+      "description": "The runs.id to process. The dashboard sets this when you start a run from Collect; leave it empty here.",
       "editor": "textfield"
+    },
+    "mode": {
+      "title": "Mode",
+      "type": "string",
+      "description": "Set to sweep in the daily Apify Schedule: runs every watchlist that is due, under the monthly spend cap.",
+      "editor": "select",
+      "enum": ["sweep"],
+      "enumTitles": ["Sweep due watchlists"]
     }
-  },
-  "required": ["runId"]
+  }
 }

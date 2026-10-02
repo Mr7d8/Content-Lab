@@ -42,6 +42,13 @@ export interface Store {
   existingItemKeys(source: string, externalIds: string[]): Promise<Set<string>>;
   // Saves new items (keeping any collected meanwhile) and appends them to the run in order.
   addRunItems(runId: string, items: TablesInsert<'items'>[]): Promise<number>;
+  // Sweep mode.
+  getSettings(): Promise<Tables<'app_settings'>>;
+  monthSpendUsd(): Promise<number>;
+  listActiveWatchlists(): Promise<WatchlistRow[]>;
+  createRun(row: TablesInsert<'runs'>): Promise<RunRow>;
+  // Scheduled runs left behind by an actor that timed out.
+  listStaleScheduledRuns(now: string): Promise<RunRow[]>;
 }
 
 function check<T>(result: { data: T; error: { message: string } | null }, what: string): T {
@@ -161,6 +168,25 @@ export function supabaseStore(url: string, serviceRoleKey: string): Store {
         .map((itemId) => ({ run_id: runId, item_id: itemId, position: position++ }));
       if (rows.length) check(await db.from('run_items').insert(rows), 'Attach items to run');
       return rows.length;
+    },
+    async getSettings() {
+      return checkRow(await db.from('app_settings').select('*').eq('id', true).single(), 'Read settings');
+    },
+    async monthSpendUsd() {
+      return Number(check(await db.rpc('month_spend_usd'), 'Read month spend') ?? 0);
+    },
+    async listActiveWatchlists() {
+      return check(await db.from('watchlists').select('*').eq('active', true), 'Read watchlists') ?? [];
+    },
+    async createRun(row) {
+      return checkRow(await db.from('runs').insert(row).select('*').single(), 'Create run');
+    },
+    async listStaleScheduledRuns(now) {
+      const before = new Date(Date.parse(now) - STALE_RUN_MS).toISOString();
+      return check(
+        await db.from('runs').select('*').eq('trigger', 'schedule').eq('status', 'running').lt('updated_at', before).order('created_at'),
+        'Read stale runs',
+      ) ?? [];
     },
   };
 }

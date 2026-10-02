@@ -12,6 +12,9 @@ export class MemoryStore implements Store {
   classifications: Tables<'classifications'>[] = [];
   runUpdates: Partial<RunRow>[] = [];
   watchlists = new Map<string, WatchlistRow>();
+  settings: Tables<'app_settings'> = { id: true, monthly_spend_cap_usd: 5, sweep_spend_cap_usd: 0.5, sweeps_enabled: true, updated_at: '' };
+  // Spend from runs outside this store (earlier this month).
+  earlierSpend = 0;
 
   addWatchlist(patch: Partial<WatchlistRow> = {}): WatchlistRow {
     const w: WatchlistRow = {
@@ -139,6 +142,21 @@ export class MemoryStore implements Store {
       added++;
     }
     return added;
+  }
+  async getSettings() {
+    return { ...this.settings };
+  }
+  async monthSpendUsd() {
+    return this.earlierSpend + [...this.runs.values()].reduce((sum, r) => sum + Number(r.cost_actual_usd), 0);
+  }
+  async listActiveWatchlists() {
+    return [...this.watchlists.values()].filter((w) => w.active).map((w) => ({ ...w }));
+  }
+  async createRun(row: TablesInsert<'runs'>) {
+    return this.addRun(row as Partial<RunRow>);
+  }
+  async listStaleScheduledRuns(now: string) {
+    return [...this.runs.values()].filter((r) => r.trigger === 'schedule' && isStaleRun(r, now)).map((r) => ({ ...r }));
   }
   async saveClassification(row: TablesInsert<'classifications'>) {
     this.classifications = this.classifications.filter((c) => !(c.item_id === row.item_id && c.prompt_version === row.prompt_version && c.vision_version === row.vision_version && c.model === row.model));
