@@ -8,7 +8,7 @@ const cc = (adId: string, rank: number, extra: Record<string, unknown> = {}) => 
 });
 
 describe('planIngest', () => {
-  const board = { id: 'b1', type: 'advertiser', value: 'Temu', source: 'tiktok_creative_center' };
+  const board = { id: 'b1', type: 'advertiser', value: 'Temu', source: 'tiktok_creative_center', objective: null };
 
   it('maps rows to items, keeps the source rank and the latest scan row', () => {
     const plan = planIngest(board, [cc('7300000000000000001', 1), cc('7300000000000000002', 2, { brandName: 'Temu MA' })], 0, NOW);
@@ -22,12 +22,27 @@ describe('planIngest', () => {
   });
 
   it('skips unreadable and repeated rows, and continues ranks across pages for organic boards', () => {
-    const organic = { id: 'b2', type: 'hashtag', value: 'tiktokmaroc', source: 'tiktok_organic' };
+    const organic = { id: 'b2', type: 'hashtag', value: 'tiktokmaroc', source: 'tiktok_organic', objective: null };
     const row = (id: string) => ({ id, webVideoUrl: `https://www.tiktok.com/@shop/video/${id}`, playCount: 10, videoMeta: { duration: 9 } });
     const plan = planIngest(organic, [row('7300000000000000011'), { id: 'bad' }, row('7300000000000000011'), row('7300000000000000012')], 50, NOW);
     expect(plan.items.map((i) => i.external_id)).toEqual(['7300000000000000011', '7300000000000000012']);
     expect([...plan.ranks.values()]).toEqual([51, 54]);
     expect(plan.items[0]?.advertiser).toBeNull();
+  });
+
+  it('leaves out ads run for another objective than the board\'s', () => {
+    const purchase = { id: 'b3', type: 'industry', value: 'ecommerce', source: 'tiktok_creative_center', objective: 'purchase' };
+    const rows = [
+      cc('7300000000000000021', 1, { objectiveKey: 'campaign_objective_reach' }),
+      cc('7300000000000000022', 2, { objectiveKey: 'campaign_objective_conversion' }),
+      cc('7300000000000000023', 3, { objectiveKey: 'campaign_objective_video_view' }),
+      cc('7300000000000000024', 4, { objectiveKey: 'campaign_objective_product_sales' }),
+      cc('7300000000000000025', 5),
+    ];
+    const plan = planIngest(purchase, rows, 0, NOW);
+    expect(plan.items.map((i) => i.external_id)).toEqual(['7300000000000000022', '7300000000000000024', '7300000000000000025']);
+    expect(plan.offObjective).toBe(2);
+    expect(planIngest(board, rows, 0, NOW).items).toHaveLength(5);
   });
 });
 
