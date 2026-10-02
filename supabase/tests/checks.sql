@@ -212,3 +212,56 @@ do $$ begin
   end if;
   raise notice 'PASS app functions closed to anon';
 end $$;
+
+-- 11. v2: boards, scans, decodes, covers
+begin;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111","email":"member@example.com"}';
+do $$ declare board uuid; item uuid; spend_before numeric; begin
+  insert into public.watchlists (name, type, value, source, region, max_items, period_days)
+    values ('Noon, UAE', 'advertiser', 'Noon', 'tiktok_creative_center', 'AE', 50, 7) returning id into board;
+  insert into public.items (source, source_url, external_id) values ('tiktok_creative_center', 'https://ads.tiktok.com/business/creativecenter/topads/7300000000000000099/', '7300000000000000099') returning id into item;
+  insert into public.board_items (watchlist_id, item_id, rank) values (board, item, 1);
+  if (select count(*) from public.board_items where watchlist_id = board) <> 1 then raise exception 'FAIL board item'; end if;
+  if (select kind from public.runs order by created_at desc limit 1) is null then raise exception 'FAIL run kind'; end if;
+  insert into public.runs (source, watchlist_id, spend_cap_usd, apify_dataset_id) values ('tiktok_creative_center', board, 0.5, 'ds1');
+  if (select kind from public.runs where apify_dataset_id = 'ds1') <> 'scan' then raise exception 'FAIL scan kind default'; end if;
+  select public.month_spend_usd() into spend_before;
+  update public.items set decode_status = 'done', decoded_at = now(), decode_cost_usd = 0.0125 where id = item;
+  if public.month_spend_usd() - spend_before <> 0.0125 then raise exception 'FAIL month spend leaves out decodes'; end if;
+  begin
+    update public.watchlists set max_items = 51 where id = board;
+    raise exception 'FAIL 51 ads per scan accepted';
+  exception when check_violation then null; end;
+  begin
+    update public.watchlists set period_days = 14 where id = board;
+    raise exception 'FAIL period 14 accepted';
+  exception when check_violation then null; end;
+  begin
+    update public.items set decode_status = 'decoding' where id = item;
+    raise exception 'FAIL unknown decode status accepted';
+  exception when check_violation then null; end;
+  delete from public.watchlists where id = board;
+  if exists (select 1 from public.board_items where item_id = item) then raise exception 'FAIL board items outlive their board'; end if;
+  raise notice 'PASS boards, scans, decode status and spend';
+end $$;
+rollback;
+
+begin;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"22222222-2222-2222-2222-222222222222","email":"stranger@example.com"}';
+do $$ begin
+  begin
+    insert into public.board_items (watchlist_id, item_id) values (gen_random_uuid(), gen_random_uuid());
+    raise exception 'FAIL stranger added a board item';
+  exception when insufficient_privilege then null; end;
+  if (select count(*) from public.board_items) <> 0 then raise exception 'FAIL stranger sees board items'; end if;
+  raise notice 'PASS board items hidden from strangers';
+end $$;
+rollback;
+
+do $$ begin
+  if not (select public from storage.buckets where id = 'covers') then raise exception 'FAIL covers bucket not public'; end if;
+  if has_table_privilege('anon', 'public.board_items', 'select') then raise exception 'FAIL anon can read board items'; end if;
+  raise notice 'PASS covers bucket public, board items closed to anon';
+end $$;

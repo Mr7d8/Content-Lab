@@ -20,7 +20,7 @@ export class MemoryStore implements Store {
     const w: WatchlistRow = {
       id: `wl-${this.watchlists.size + 1}`, name: 'Temu, any region', type: 'advertiser', value: 'Temu',
       source: 'tiktok_creative_center', region: null, objective: null, active: true, refresh_cadence: 'weekly',
-      max_items: 3, last_swept_at: null, created_by: null, created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z',
+      max_items: 3, last_swept_at: null, period_days: 7, created_by: null, created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z',
       ...patch,
     };
     this.watchlists.set(w.id, w);
@@ -31,7 +31,7 @@ export class MemoryStore implements Store {
     const run: RunRow = {
       id: `run-${this.runs.size + 1}`, source: 'manual_import', watchlist_id: null, status: 'queued',
       items_requested: 0, items_done: 0, items_failed: 0, cost_estimate_usd: null, spend_cap_usd: 1,
-      cost_actual_usd: 0, pause_requested: false, worker_run_id: null, error: null, created_by: null, trigger: 'manual',
+      cost_actual_usd: 0, pause_requested: false, worker_run_id: null, error: null, created_by: null, trigger: 'manual', kind: 'scan', apify_dataset_id: null, synced_count: 0,
       created_at: '2026-10-01T00:00:00Z', started_at: null, finished_at: null, updated_at: '2026-10-01T00:00:00Z',
       ...patch,
     };
@@ -45,7 +45,7 @@ export class MemoryStore implements Store {
       id: `item-${n}`, source: 'tiktok_organic', source_url: `https://www.tiktok.com/@brand/video/73000000000000000${n}`,
       external_id: `73000000000000000${n}`, advertiser: null, account_handle: 'brand', region: null, industry: null,
       objective_source: null, posted_at: null, collected_at: '2026-10-01T00:00:00Z', duration_s: null,
-      thumbnail_url: null, raw_json: {}, ...patch,
+      thumbnail_url: null, raw_json: {}, decode_status: null, decode_error: null, decoded_at: null, decode_cost_usd: 0, ...patch,
     };
     this.items.set(item.id, item);
     this.runItems.push({
@@ -92,7 +92,7 @@ export class MemoryStore implements Store {
     const current: MediaRow = this.media.get(itemId) ?? {
       item_id: itemId, video_hash: null, width: null, height: null, scene_cuts: null, audio_type: null,
       transcript: null, transcript_lang: null, transcript_segments: null, frames_json: null, ocr_text: null,
-      vision_model: null, vision_version: null, keyframe_paths: [], created_at: '', updated_at: '',
+      vision_model: null, vision_version: null, keyframe_paths: [], breakdown_json: null, created_at: '', updated_at: '',
     };
     this.media.set(itemId, { ...current, ...patch } as MediaRow);
   }

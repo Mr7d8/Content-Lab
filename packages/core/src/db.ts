@@ -29,6 +29,45 @@ export type Database = {
         };
         Relationships: [];
       };
+      board_items: {
+        Row: {
+          watchlist_id: string;
+          item_id: string;
+          rank: number | null;
+          added_at: string;
+          last_seen_at: string;
+        };
+        Insert: {
+          watchlist_id: string;
+          item_id: string;
+          rank?: number | null;
+          added_at?: string;
+          last_seen_at?: string;
+        };
+        Update: {
+          watchlist_id?: string;
+          item_id?: string;
+          rank?: number | null;
+          added_at?: string;
+          last_seen_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'board_items_item_id_fkey';
+            columns: ['item_id'];
+            isOneToOne: false;
+            referencedRelation: 'items';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'board_items_watchlist_id_fkey';
+            columns: ['watchlist_id'];
+            isOneToOne: false;
+            referencedRelation: 'watchlists';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       briefs: {
         Row: {
           id: string;
@@ -158,6 +197,10 @@ export type Database = {
           duration_s: number | null;
           thumbnail_url: string | null;
           raw_json: Json;
+          decode_status: string | null;
+          decode_error: string | null;
+          decoded_at: string | null;
+          decode_cost_usd: number;
         };
         Insert: {
           id?: string;
@@ -174,6 +217,10 @@ export type Database = {
           duration_s?: number | null;
           thumbnail_url?: string | null;
           raw_json?: Json;
+          decode_status?: string | null;
+          decode_error?: string | null;
+          decoded_at?: string | null;
+          decode_cost_usd?: number;
         };
         Update: {
           id?: string;
@@ -190,6 +237,10 @@ export type Database = {
           duration_s?: number | null;
           thumbnail_url?: string | null;
           raw_json?: Json;
+          decode_status?: string | null;
+          decode_error?: string | null;
+          decoded_at?: string | null;
+          decode_cost_usd?: number;
         };
         Relationships: [];
       };
@@ -211,6 +262,7 @@ export type Database = {
           keyframe_paths: string[];
           created_at: string;
           updated_at: string;
+          breakdown_json: Json | null;
         };
         Insert: {
           item_id: string;
@@ -229,6 +281,7 @@ export type Database = {
           keyframe_paths?: string[];
           created_at?: string;
           updated_at?: string;
+          breakdown_json?: Json | null;
         };
         Update: {
           item_id?: string;
@@ -247,6 +300,7 @@ export type Database = {
           keyframe_paths?: string[];
           created_at?: string;
           updated_at?: string;
+          breakdown_json?: Json | null;
         };
         Relationships: [
           {
@@ -431,6 +485,9 @@ export type Database = {
           finished_at: string | null;
           updated_at: string;
           trigger: string;
+          kind: string;
+          apify_dataset_id: string | null;
+          synced_count: number;
         };
         Insert: {
           id?: string;
@@ -452,6 +509,9 @@ export type Database = {
           finished_at?: string | null;
           updated_at?: string;
           trigger?: string;
+          kind?: string;
+          apify_dataset_id?: string | null;
+          synced_count?: number;
         };
         Update: {
           id?: string;
@@ -473,6 +533,9 @@ export type Database = {
           finished_at?: string | null;
           updated_at?: string;
           trigger?: string;
+          kind?: string;
+          apify_dataset_id?: string | null;
+          synced_count?: number;
         };
         Relationships: [
           {
@@ -550,6 +613,7 @@ export type Database = {
           updated_at: string;
           max_items: number;
           last_swept_at: string | null;
+          period_days: number;
         };
         Insert: {
           id?: string;
@@ -566,6 +630,7 @@ export type Database = {
           updated_at?: string;
           max_items?: number;
           last_swept_at?: string | null;
+          period_days?: number;
         };
         Update: {
           id?: string;
@@ -582,6 +647,7 @@ export type Database = {
           updated_at?: string;
           max_items?: number;
           last_swept_at?: string | null;
+          period_days?: number;
         };
         Relationships: [];
       };

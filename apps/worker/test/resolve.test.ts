@@ -16,7 +16,8 @@ const tiktokRow = {
 const item = (patch: Partial<ItemRow>): ItemRow => ({
   id: 'i1', source: 'tiktok_organic', source_url: 'https://www.tiktok.com/@temu/video/7301234567890123456',
   external_id: '7301234567890123456', advertiser: null, account_handle: null, region: null, industry: null,
-  objective_source: null, posted_at: null, collected_at: '', duration_s: null, thumbnail_url: null, raw_json: {}, ...patch,
+  objective_source: null, posted_at: null, collected_at: '', duration_s: null, thumbnail_url: null, raw_json: {},
+  decode_status: null, decode_error: null, decoded_at: null, decode_cost_usd: 0, ...patch,
 });
 
 describe('normalizers', () => {
