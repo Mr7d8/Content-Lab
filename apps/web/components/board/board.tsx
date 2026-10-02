@@ -114,7 +114,7 @@ export function Board({ data }: { data: BoardData }) {
 
   return (
     <MotionConfig reducedMotion="user">
-      <Ambient src={selected?.cover ?? null} />
+      <Ambient />
       <TopBar boards={data.boards} currentId={board.id} spend={data.spend} onNew={() => setCreating(true)} />
       <main className="relative z-[1] mx-auto max-w-[1440px] px-4 pb-32 sm:px-6">
         <Hero

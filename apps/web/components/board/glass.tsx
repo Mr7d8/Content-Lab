@@ -1,9 +1,5 @@
 'use client';
 
-import { AnimatePresence, motion } from 'motion/react';
-import { useEffect, useState } from 'react';
-import { ambientColors, DEFAULT_AMBIENT } from '@/lib/ambient';
-
 // A photo that melts into frosted glass toward the bottom: blur layers of
 // growing strength, each masked to a lower band.
 export function ProgressiveBlur({ className = '', steps = 4, max = 24 }: { className?: string; steps?: number; max?: number }) {
@@ -43,71 +39,12 @@ export function Glow({ src, className = '' }: { src: string | null; className?: 
   );
 }
 
-const palettes = new Map<string, string[] | null>();
-
-// Six colors from a 3 by 2 grid of the image, read once from a tiny canvas
-// and made vivid (see lib/ambient). Null when the image cannot be read (no
-// CORS); the page then shows the default neon light.
-function usePalette(src: string | null): string[] | null {
-  const [colors, setColors] = useState<string[] | null>(() => (src ? palettes.get(src) ?? null : null));
-  useEffect(() => {
-    if (!src) return setColors(null);
-    if (palettes.has(src)) return setColors(palettes.get(src) ?? null);
-    let live = true;
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.referrerPolicy = 'no-referrer';
-    img.onload = () => {
-      try {
-        const c = document.createElement('canvas');
-        c.width = 3;
-        c.height = 2;
-        const ctx = c.getContext('2d');
-        if (!ctx) throw new Error('no canvas');
-        ctx.drawImage(img, 0, 0, 3, 2);
-        const d = ctx.getImageData(0, 0, 3, 2).data;
-        const out = ambientColors(Array.from({ length: 6 }, (_, i) => [d[i * 4] ?? 0, d[i * 4 + 1] ?? 0, d[i * 4 + 2] ?? 0] as [number, number, number]));
-        palettes.set(src, out);
-        if (live) setColors(out);
-      } catch {
-        palettes.set(src, null);
-        if (live) setColors(null);
-      }
-    };
-    img.onerror = () => {
-      palettes.set(src, null);
-      if (live) setColors(null);
-    };
-    img.src = src;
-    return () => {
-      live = false;
-    };
-  }, [src]);
-  return colors;
-}
-
-const SPOTS = ['12% 8%', '50% 0%', '88% 10%', '8% 70%', '55% 60%', '95% 75%'];
-
-// The page's ambient color: soft neon light in the selected ad's colors
-// behind the glass. Painted gradients, no live blur, so scrolling stays smooth.
-export function Ambient({ src }: { src: string | null }) {
-  const colors = usePalette(src) ?? DEFAULT_AMBIENT;
-  const key = colors.join();
+// One soft purple glow at the top of the page, behind the hero and the top
+// cards, fading out before the content below. It scrolls away with the page.
+export function Ambient() {
   return (
-    <div aria-hidden className="ambient pointer-events-none fixed inset-0 z-0 overflow-hidden">
-      <AnimatePresence initial={false}>
-        <motion.div
-          key={key}
-          className="absolute inset-0"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 0.42 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.9 }}
-          style={{ background: colors.map((c, i) => `radial-gradient(60% 55% at ${SPOTS[i]}, ${c}, transparent 70%)`).join(', ') }}
-        />
-      </AnimatePresence>
-      {/* A soft white veil, stronger lower down, keeps the color behind the content calm. */}
-      <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,rgba(245,245,247,0),rgba(245,245,247,.55)_80%)]" />
+    <div aria-hidden className="ambient pointer-events-none absolute inset-x-0 top-0 z-0 h-[560px] overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(42%_75%_at_82%_8%,hsl(272_88%_74%/.42),transparent_72%),radial-gradient(60%_60%_at_45%_-10%,hsl(272_88%_80%/.22),transparent_75%)]" />
     </div>
   );
 }
