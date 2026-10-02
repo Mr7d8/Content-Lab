@@ -1,15 +1,15 @@
 import { claudeVision, claudeWriter } from './claude';
-import { geminiVision, geminiWriter } from './gemini';
+import { geminiDecoder, geminiVision, geminiWriter } from './gemini';
 import { groqTranscriber } from './groq';
 import { jevClassifier } from './jev';
 import { createPacer } from './pacer';
-import type { Classifier, TextWriter, Transcriber, VisionProvider } from './types';
+import type { Classifier, TextWriter, Transcriber, VideoDecoder, VisionProvider } from './types';
 
 export * from './types';
 export { ProviderError, request, delay } from './http';
 export { createPacer, type Pacer } from './pacer';
 export { groqTranscriber, isSpeech, parseGroqTranscript, GROQ_MODEL } from './groq';
-export { geminiVision, geminiWriter, DEFAULT_GEMINI_MODEL } from './gemini';
+export { geminiDecoder, geminiVision, geminiWriter, DEFAULT_GEMINI_MODEL, MAX_INLINE_VIDEO_BYTES } from './gemini';
 export { claudeVision, claudeWriter, DEFAULT_CLAUDE_MODEL } from './claude';
 export { jevClassifier, parseJevAnswers, DEFAULT_JEV_MODEL } from './jev';
 
@@ -19,6 +19,7 @@ export { jevClassifier, parseJevAnswers, DEFAULT_JEV_MODEL } from './jev';
 export interface AIProviders {
   transcriber: Transcriber;
   vision: VisionProvider;
+  decoder: VideoDecoder;
   classifier: Classifier;
   briefWriter: TextWriter;
 }
@@ -60,6 +61,10 @@ export function createAIProviders<K extends Capability>(env: AIEnv, capabilities
         out.vision = providerChoice(env, 'VISION_PROVIDER') === 'claude'
           ? claudeVision(required(env, 'ANTHROPIC_API_KEY', 'the vision pass on Claude'), { model: env.CLAUDE_MODEL || undefined })
           : geminiVision(required(env, 'GEMINI_API_KEY', 'the vision pass'), { model: env.GEMINI_MODEL || undefined, pacer: geminiPacer });
+        break;
+      case 'decoder':
+        // Paid tier expected (billing on), so no free-tier pacer.
+        out.decoder = geminiDecoder(required(env, 'GEMINI_API_KEY', 'decoding videos'), { model: env.GEMINI_MODEL || undefined });
         break;
       case 'classifier':
         out.classifier = jevClassifier(required(env, 'TYPESAFE_API_KEY', 'Jev classification'), { model: env.JEV_MODEL || undefined });

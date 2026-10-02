@@ -6,6 +6,8 @@ export * from './cost';
 export * from './discovery';
 export * from './worker-input';
 export * from './scan';
+export * from './decode';
+export { DECODE_SYSTEM, decodeJsonSchema, decodeUserText, type DecodeContext } from './prompts/decode';
 export type { Database, Json, Tables, TablesInsert, TablesUpdate } from './db';
 export * from './classify';
 export { alignToFrames, VISION_SYSTEM, visionJsonSchema, visionUserText } from './prompts/vision';

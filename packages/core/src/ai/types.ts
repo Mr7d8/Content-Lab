@@ -1,3 +1,5 @@
+import type { DecodeOutput } from '../decode';
+import type { DecodeContext } from '../prompts/decode';
 import type { VisionOutput } from '../vision';
 
 // Capability interfaces. Every AI provider sits behind one of these, and
@@ -20,6 +22,15 @@ export interface VisionProvider {
   // provider:model, stored in media.vision_model and used as the cache key.
   readonly name: string;
   describeFrames(frames: FrameImage[], context: VisionContext): Promise<{ output: VisionOutput } & Usage>;
+}
+
+// v2 decode: the whole video in, speech, frame descriptions and the script
+// breakdown out, in one call.
+export type VideoInput = { data: Uint8Array; mimeType: string };
+export interface VideoDecoder {
+  // provider:model, stored in media.vision_model.
+  readonly name: string;
+  decode(video: VideoInput, seconds: number[], context: DecodeContext): Promise<{ output: DecodeOutput } & Usage>;
 }
 
 // Call 2: text in (transcript plus vision text), typed answers out.

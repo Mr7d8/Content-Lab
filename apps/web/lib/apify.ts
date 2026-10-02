@@ -104,3 +104,25 @@ export async function getDatasetItems(datasetId: string, offset: number, limit: 
   if (!Array.isArray(body)) throw new Error('Apify returned an unexpected dataset');
   return body.filter((r): r is Record<string, unknown> => !!r && typeof r === 'object' && !Array.isArray(r));
 }
+
+// Runs an actor and waits for its dataset (short jobs only, like refreshing
+// one ad's video link).
+export async function runActorSync(
+  actorId: string,
+  input: unknown,
+  options: { token: string; timeoutS: number; maxItems?: number },
+  fetchImpl: typeof fetch = fetch,
+): Promise<Record<string, unknown>[]> {
+  const params = new URLSearchParams({ timeout: String(options.timeoutS), clean: 'true', format: 'json' });
+  if (options.maxItems) params.set('maxItems', String(options.maxItems));
+  const res = await fetchImpl(`${API}/acts/${encodeURIComponent(actorId)}/run-sync-get-dataset-items?${params}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${options.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+    signal: AbortSignal.timeout((options.timeoutS + 20) * 1000),
+  });
+  if (!res.ok) throw new Error(`Apify: HTTP ${res.status} while fetching the video`);
+  const body = (await res.json()) as unknown;
+  if (!Array.isArray(body)) throw new Error('Apify returned an unexpected dataset');
+  return body.filter((r): r is Record<string, unknown> => !!r && typeof r === 'object' && !Array.isArray(r));
+}

@@ -24,11 +24,13 @@ export function visionUserText(frames: FrameImage[], context: VisionContext): st
 }
 
 // JSON Schema for providers that take one (Gemini responseJsonSchema).
-export function visionJsonSchema(): Record<string, unknown> {
-  const schema = z.toJSONSchema(VisionOutput) as Record<string, unknown>;
+export function providerJsonSchema(type: z.ZodType): Record<string, unknown> {
+  const schema = z.toJSONSchema(type) as Record<string, unknown>;
   delete schema.$schema;
   return stripHugeMaximum(schema) as Record<string, unknown>;
 }
+
+export const visionJsonSchema = () => providerJsonSchema(VisionOutput);
 
 function stripHugeMaximum(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(stripHugeMaximum);

@@ -1,8 +1,10 @@
+import { alignDecodedFrames, DecodeOutput } from '../decode';
+import { DECODE_SYSTEM, decodeJsonSchema, decodeUserText } from '../prompts/decode';
 import { alignToFrames, VISION_SYSTEM, visionJsonSchema, visionUserText } from '../prompts/vision';
 import { VisionOutput } from '../vision';
 import { request, type RequestOptions } from './http';
 import type { Pacer } from './pacer';
-import type { TextWriter, VisionProvider } from './types';
+import type { TextWriter, VideoDecoder, VisionProvider } from './types';
 
 // Tracks Google's current Flash model; pin GEMINI_MODEL to a version for reproducible caching.
 export const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest';
@@ -78,6 +80,41 @@ export function geminiWriter(apiKey: string, options: Options = {}): TextWriter 
         generationConfig: { maxOutputTokens: maxTokens },
       }, options);
       return result;
+    },
+  };
+}
+
+// Inline requests are capped at 20 MB, and base64 adds a third.
+export const MAX_INLINE_VIDEO_BYTES = 14 * 1024 * 1024;
+
+export function geminiDecoder(apiKey: string, options: Options = {}): VideoDecoder {
+  const model = options.model || DEFAULT_GEMINI_MODEL;
+  return {
+    name: `gemini:${model}`,
+    async decode(video, seconds, context) {
+      if (video.data.length > MAX_INLINE_VIDEO_BYTES) {
+        throw new Error(`The video is ${(video.data.length / 1048576).toFixed(1)} MB; decoding takes up to 14 MB`);
+      }
+      const body = {
+        systemInstruction: { parts: [{ text: DECODE_SYSTEM }] },
+        contents: [{
+          role: 'user',
+          parts: [
+            { inlineData: { mimeType: video.mimeType, data: toBase64(video.data) } },
+            { text: decodeUserText(seconds, context) },
+          ],
+        }],
+        generationConfig: { responseMimeType: 'application/json', responseJsonSchema: decodeJsonSchema(), temperature: 0 },
+      };
+      const result = await generate(apiKey, model, body, { retries: 2, timeoutMs: 180000, ...options });
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(result.text);
+      } catch {
+        throw new Error('Gemini returned invalid JSON for the decode');
+      }
+      const output = alignDecodedFrames(DecodeOutput.parse(parsed), seconds);
+      return { output, inputTokens: result.inputTokens, outputTokens: result.outputTokens };
     },
   };
 }
