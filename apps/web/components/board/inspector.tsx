@@ -2,13 +2,14 @@
 
 import { DECODE_ESTIMATE_USD, labelText, sourceLabel, type BeatRole } from '@content-lab/core';
 import { AnimatePresence, motion } from 'motion/react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatCount, type BoardAd } from '@/lib/board-view';
 import { BEAT_COLORS } from '@/lib/colors';
 import { clock } from '@/lib/frame-view';
 import { Cover } from './cover';
 import { Glow, ProgressiveBlur } from './glass';
 import { MarketNote } from './market';
+import { getSoundOn, setSoundOn, useSoundOn } from './use-sound';
 
 const Sparkle = ({ size = 14 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 14 14" aria-hidden><path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7 5.6 5.6Z" fill="currentColor" /></svg>
@@ -41,8 +42,48 @@ function MediaCard({
 }) {
   const [failed, setFailed] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(true);
+  const soundOn = useSoundOn();
+  // The browser refused to start this video with sound before any click.
+  const [blocked, setBlocked] = useState(false);
+  const muted = !soundOn || blocked;
+  const soundButton = useRef<HTMLButtonElement>(null);
   const playable = !!ad.video && failed !== ad.video;
+
+  // Plays on its own. With sound on, a browser that wants a click first gets a
+  // muted start, and the sound comes on at the first click or key press.
+  useEffect(() => {
+    const v = video.current;
+    if (!playable || !v) return;
+    // The page's first render is muted (the server can't see the choice), and
+    // unmuting a playing video before any click pauses it, so start as chosen.
+    v.muted = !getSoundOn();
+    v.play().catch((e: unknown) => {
+      if (e instanceof DOMException && e.name === 'NotAllowedError' && !v.muted) {
+        v.muted = true;
+        setBlocked(true);
+        void v.play().catch(() => undefined);
+      }
+    });
+  }, [playable, video]);
+  useEffect(() => {
+    if (!blocked) return;
+    const unblock = (e: Event) => {
+      if (e instanceof KeyboardEvent && e.key === 'Escape') return;
+      // The sound button handles its own click.
+      if (soundButton.current?.contains(e.target as Node)) return;
+      setBlocked(false);
+    };
+    window.addEventListener('click', unblock, true);
+    window.addEventListener('keydown', unblock, true);
+    return () => {
+      window.removeEventListener('click', unblock, true);
+      window.removeEventListener('keydown', unblock, true);
+    };
+  }, [blocked]);
+  const toggleSound = () => {
+    setBlocked(false);
+    setSoundOn(muted);
+  };
   const toggle = () => {
     const v = video.current;
     if (!v) return;
@@ -63,7 +104,6 @@ function MediaCard({
             key={ad.id}
             src={ad.video as string}
             poster={ad.cover ?? undefined}
-            autoPlay
             muted={muted}
             loop
             playsInline
@@ -97,7 +137,7 @@ function MediaCard({
               </span>
             )}
             {playable && (
-              <button type="button" onClick={() => setMuted((m) => !m)} aria-label={muted ? 'Sound on' : 'Sound off'} className="liquid-dark grid h-8 w-8 place-items-center rounded-full">
+              <button ref={soundButton} type="button" onClick={toggleSound} aria-label={muted ? 'Sound on' : 'Sound off'} className="liquid-dark grid h-8 w-8 place-items-center rounded-full">
                 {muted ? (
                   <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden><path d="M2 6h2.5L8 3v10L4.5 10H2Z" fill="currentColor" /><path d="m11 6 4 4m0-4-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
                 ) : (
