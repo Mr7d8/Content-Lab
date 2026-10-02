@@ -1,4 +1,4 @@
-import { CREATIVE_CENTER_OBJECTIVE, expandRegion } from './sources';
+import { ANY_REGION_COUNTRIES, CREATIVE_CENTER_OBJECTIVE, expandRegion } from './sources';
 import type { Tables } from './db';
 import { MAX_TERMS, searchTerms } from './terms';
 import { parseLink } from './urls';
@@ -23,8 +23,7 @@ export type ScanExtras = { followed?: string[] };
 // period is "7", "30" or "180"; regions and keywords are lists).
 export function creativeCenterScanInput(board: Board, extras: ScanExtras = {}): Raw {
   const input: Raw = { period: String(board.period_days), maxItems: board.max_items };
-  const countries = expandRegion(board.region);
-  if (countries) input.regions = countries;
+  input.regions = expandRegion(board.region) ?? [...ANY_REGION_COUNTRIES];
   if (board.type === 'advertiser' || board.type === 'keyword') input.keywords = searchTerms(board.value, board.type);
   if (board.type === 'snowball') {
     const names = (extras.followed ?? []).slice(0, MAX_TERMS);

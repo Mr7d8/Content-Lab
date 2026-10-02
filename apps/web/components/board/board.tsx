@@ -3,10 +3,11 @@
 import { DECODE_ESTIMATE_USD } from '@content-lab/core';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { glowInk } from '@/lib/ambient';
 import type { BoardData } from '@/lib/board';
-import { boardHeadline, boardStats, byMarket, groupAds, marketCounts, rankAds, splitByScan, type BoardAd, type MarketFilter as Market } from '@/lib/board-view';
+import { boardHeadline, boardStats, byMarket, groupAds, marketCounts, rankAds, scanSummary, splitByScan, type BoardAd, type MarketFilter as Market } from '@/lib/board-view';
 import { DeepDive } from './deep-dive';
-import { Ambient } from './glass';
+import { Ambient, useCoverColor } from './glass';
 import { BoardActions, Hero } from './hero';
 import { Inspector } from './inspector';
 import { Kpis } from './kpis';
@@ -86,6 +87,9 @@ export function Board({ data }: { data: BoardData }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selectedIndex = Math.max(0, ads.findIndex((a) => a.id === selectedId));
   const selected = ads[selectedIndex] ?? null;
+  // The glow's color, from the selected ad's cover, and the hero text over it.
+  const glow = useCoverColor(selected?.cover ?? null);
+  const ink = useMemo(() => glowInk(glow), [glow]);
   const [format, setFormat] = useState<string | null>(null);
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const inspector = useRef<HTMLDivElement>(null);
@@ -114,19 +118,23 @@ export function Board({ data }: { data: BoardData }) {
 
   return (
     <MotionConfig reducedMotion="user">
-      <Ambient src={selected?.cover ?? null} />
+      <Ambient color={glow} />
       <TopBar boards={data.boards} currentId={board.id} spend={data.spend} onNew={() => setCreating(true)} />
       <main className="relative z-[1] mx-auto max-w-[1440px] px-4 pb-32 sm:px-6">
-        <Hero
-          board={board}
-          headline={boardHeadline(ads, source)}
-          count={counts.all}
-          scan={scan}
-          top={ads.slice(0, 3)}
-          onSelect={select}
-          market={<MarketFilter value={market} counts={counts} onChange={setMarket} />}
-        />
-        {board.moroccan_only && <GateBar boardId={board.id} gate={data.gate} ads={inScan} showLeftOut={showLeftOut} onToggle={() => setShowLeftOut((v) => !v)} />}
+        {/* The text over the glow takes a dark shade of its color, to stay readable. */}
+        <div className="glow-ink" style={{ '--sub': ink.sub, '--faint': ink.faint } as React.CSSProperties}>
+          <Hero
+            board={board}
+            headline={boardHeadline(ads, source)}
+            count={counts.all}
+            scan={scan}
+            summary={scanSummary(data.scan)}
+            top={ads.slice(0, 3)}
+            onSelect={select}
+            market={<MarketFilter value={market} counts={counts} onChange={setMarket} />}
+          />
+          {board.moroccan_only && <GateBar boardId={board.id} gate={data.gate} ads={inScan} showLeftOut={showLeftOut} onToggle={() => setShowLeftOut((v) => !v)} />}
+        </div>
         <Kpis stats={stats} source={source} decoding={queue.active.size} cover={ads[0]?.cover ?? null} />
 
         <section className="mt-10" aria-labelledby="overview-title">

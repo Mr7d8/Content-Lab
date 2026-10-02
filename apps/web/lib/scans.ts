@@ -90,7 +90,7 @@ export async function startScan(admin: AdminClient, boardId: string, trigger: 'm
   const now = new Date().toISOString();
   const row: TablesInsert<'runs'> = {
     source: board.source, watchlist_id: board.id, kind: 'scan', trigger, status: 'running', started_at: now,
-    spend_cap_usd: cap, cost_estimate_usd: Number(budget.estimate.toFixed(4)),
+    items_requested: board.max_items, spend_cap_usd: cap, cost_estimate_usd: Number(budget.estimate.toFixed(4)),
   };
   const { data: run, error } = await admin.from('runs').insert(row).select('id').single();
   if (error) return { ok: false, message: `Could not create the scan: ${error.message}` };
@@ -115,15 +115,16 @@ export async function startScan(admin: AdminClient, boardId: string, trigger: 'm
   }
 }
 
-export type SyncResult = { status: string; synced: number; added: number; done: boolean; error: string | null; boardId?: string | null };
+// synced counts the scraper's rows read so far, out of the requested ads.
+export type SyncResult = { status: string; synced: number; requested: number; added: number; done: boolean; error: string | null; boardId?: string | null };
 
 // Pulls the scan's new rows into the board, saving covers as it goes. Safe to
 // call repeatedly and from several places (the open board, the webhook).
 export async function syncScan(admin: AdminClient, runId: string, budgetMs = 8000): Promise<SyncResult> {
   const started = Date.now();
   const { data: run } = await admin.from('runs').select('*').eq('id', runId).maybeSingle();
-  if (!run) return { status: 'missing', synced: 0, added: 0, done: true, error: 'Scan not found' };
-  const idle = { status: run.status, synced: run.synced_count, added: 0, done: run.status !== 'running', error: run.error, boardId: run.watchlist_id };
+  if (!run) return { status: 'missing', synced: 0, requested: 0, added: 0, done: true, error: 'Scan not found' };
+  const idle = { status: run.status, synced: run.synced_count, requested: run.items_requested, added: 0, done: run.status !== 'running', error: run.error, boardId: run.watchlist_id };
   if (run.kind !== 'scan' || run.status !== 'running' || !run.worker_run_id || !run.apify_dataset_id || !run.watchlist_id) return idle;
   const { data: board } = await admin.from('watchlists').select('id, type, value, source, objective, moroccan_only').eq('id', run.watchlist_id).maybeSingle();
   if (!board) return idle;
@@ -151,11 +152,10 @@ export async function syncScan(admin: AdminClient, runId: string, budgetMs = 800
   // Only advance from the offset we read, so two syncs never double count.
   await admin.from('runs').update({
     synced_count: offset,
-    items_requested: offset,
     cost_actual_usd: Number(Math.min(cost, 999).toFixed(4)),
     ...(outcome ? { status: outcome.status, error: outcome.error, finished_at: new Date().toISOString() } : {}),
   }).eq('id', run.id).eq('synced_count', run.synced_count);
-  return { status: outcome?.status ?? 'running', synced: offset, added, done, error: outcome?.error ?? null, boardId: board.id };
+  return { status: outcome?.status ?? 'running', synced: offset, requested: run.items_requested, added, done, error: outcome?.error ?? null, boardId: board.id };
 }
 
 type IngestBoard = { id: string; type: string; value: string; source: string; objective: string | null; moroccan_only: boolean };

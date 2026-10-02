@@ -12,6 +12,8 @@ import {
   lengthBucket,
   marketCounts,
   rankAds,
+  scanProgress,
+  scanSummary,
   splitByScan,
   spreadPoints,
   toBoardAd,
@@ -199,5 +201,33 @@ describe('splitByScan', () => {
   it('shows everything when nothing was scanned yet or nothing is current', () => {
     expect(splitByScan([at('a', null)], null)).toEqual({ current: [at('a', null)], older: [] });
     expect(splitByScan([at('a', '2026-09-01T00:00:00Z')], '2026-10-02T11:00:00Z').current.map((a) => a.id)).toEqual(['a']);
+  });
+});
+
+describe('scanSummary', () => {
+  it('counts the rows that did not land on the board', () => {
+    // The Morocco board's scan of 2026-10-02: 100 rows, 75 ads kept.
+    expect(scanSummary({ status: 'completed', synced: 100, requested: 100, kept: 75 })).toEqual({ found: 100, requested: 100, skipped: 25 });
+  });
+
+  it('says nothing about a scan that has not finished well', () => {
+    expect(scanSummary(null)).toBeNull();
+    expect(scanSummary({ status: 'running', synced: 40, requested: 100, kept: 30 })).toBeNull();
+    expect(scanSummary({ status: 'failed', synced: 40, requested: 100, kept: 30 })).toBeNull();
+  });
+
+  it('never reports more found than asked for, or skipped below zero', () => {
+    expect(scanSummary({ status: 'completed', synced: 18, requested: 0, kept: 20 })).toEqual({ found: 18, requested: 18, skipped: 0 });
+  });
+});
+
+describe('scanProgress', () => {
+  it('counts rows in against the ads the run asked for', () => {
+    expect(scanProgress(40, 100, 50)).toEqual({ done: 40, target: 100 });
+  });
+
+  it("uses the board's setting until the run says, and never runs past the target", () => {
+    expect(scanProgress(0, 0, 100)).toEqual({ done: 0, target: 100 });
+    expect(scanProgress(104, 100, 100)).toEqual({ done: 100, target: 100 });
   });
 });

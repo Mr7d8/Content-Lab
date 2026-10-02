@@ -31,7 +31,8 @@ export const TYPE_LABELS: Record<string, string> = {
 };
 
 export const OBJECTIVES = ['app_install', 'purchase'] as const;
-export const CADENCES = ['weekly', 'monthly', 'manual'] as const;
+// Manual first: boards scan only when asked unless a schedule is picked.
+export const CADENCES = ['manual', 'weekly', 'monthly'] as const;
 export const PERIODS = [7, 30, 180] as const;
 // Choices offered in the board menu.
 export const ADS_PER_SCAN = [10, 20, 30, 50, 100, 200] as const;
@@ -74,7 +75,7 @@ export function parseWatchlistForm(get: (name: string) => string | null): Parsed
   if (region !== null && !REGION_OPTIONS.includes(region)) return { ok: false, message: 'Pick a region from the list.' };
   const objective = source === 'tiktok_creative_center' ? get('objective') || null : null;
   if (objective !== null && !(OBJECTIVES as readonly string[]).includes(objective)) return { ok: false, message: 'Pick an objective from the list.' };
-  const cadence = get('refresh_cadence') ?? 'weekly';
+  const cadence = get('refresh_cadence') ?? 'manual';
   if (!(CADENCES as readonly string[]).includes(cadence)) return { ok: false, message: 'Pick how often to refresh.' };
   const maxItems = Number(get('max_items') ?? 30);
   if (!Number.isInteger(maxItems) || maxItems < 1 || maxItems > MAX_SCAN_ADS) return { ok: false, message: `Ads per scan must be between 1 and ${MAX_SCAN_ADS}.` };
