@@ -1,5 +1,5 @@
 import type { Tables, TablesInsert } from '@content-lab/core';
-import { CLAIMABLE, type ItemRow, type MediaRow, type RunItemRow, type RunRow, type Store } from '../src/store';
+import { CLAIMABLE, isStaleRun, type ItemRow, type MediaRow, type RunItemRow, type RunRow, type Store, type WatchlistRow } from '../src/store';
 
 // In-memory Store for tests: same contract as the Supabase store.
 export class MemoryStore implements Store {
@@ -11,6 +11,18 @@ export class MemoryStore implements Store {
   frames = new Map<string, { bytes: Uint8Array; contentType: string }>();
   classifications: Tables<'classifications'>[] = [];
   runUpdates: Partial<RunRow>[] = [];
+  watchlists = new Map<string, WatchlistRow>();
+
+  addWatchlist(patch: Partial<WatchlistRow> = {}): WatchlistRow {
+    const w: WatchlistRow = {
+      id: `wl-${this.watchlists.size + 1}`, name: 'Temu, any region', type: 'advertiser', value: 'Temu',
+      source: 'tiktok_creative_center', region: null, objective: null, active: true, refresh_cadence: 'weekly',
+      max_items: 3, last_swept_at: null, created_by: null, created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z',
+      ...patch,
+    };
+    this.watchlists.set(w.id, w);
+    return w;
+  }
 
   addRun(patch: Partial<RunRow> = {}): RunRow {
     const run: RunRow = {
@@ -47,7 +59,7 @@ export class MemoryStore implements Store {
 
   async claimRun(runId: string, now: string) {
     const run = this.runs.get(runId);
-    if (!run || !(CLAIMABLE as readonly string[]).includes(run.status)) return null;
+    if (!run || !((CLAIMABLE as readonly string[]).includes(run.status) || isStaleRun(run, now))) return null;
     Object.assign(run, { status: 'running', started_at: run.started_at ?? now, finished_at: null, error: null });
     return { ...run };
   }
@@ -97,6 +109,36 @@ export class MemoryStore implements Store {
   }
   async findClassification(videoHash: string, promptVersion: string, visionVersion: string, model: string) {
     return this.classifications.find((c) => c.video_hash === videoHash && c.prompt_version === promptVersion && c.vision_version === visionVersion && c.model === model) ?? null;
+  }
+  async getWatchlist(id: string) {
+    const w = this.watchlists.get(id);
+    if (!w) throw new Error('Read watchlist: not found');
+    return { ...w };
+  }
+  async updateWatchlist(id: string, patch: Partial<WatchlistRow>) {
+    Object.assign(this.watchlists.get(id)!, patch);
+  }
+  async existingItemKeys(source: string, externalIds: string[]) {
+    const ids = new Set(externalIds);
+    return new Set([...this.items.values()].filter((i) => i.source === source && ids.has(i.external_id)).map((i) => `${source}:${i.external_id}`));
+  }
+  async addRunItems(runId: string, rows: TablesInsert<'items'>[]) {
+    let added = 0;
+    for (const row of rows) {
+      const existing = [...this.items.values()].find((i) => i.source === row.source && i.external_id === row.external_id);
+      if (existing) {
+        if (this.runItems.some((r) => r.run_id === runId && r.item_id === existing.id)) continue;
+        this.runItems.push({
+          run_id: runId, item_id: existing.id, position: this.runItems.filter((r) => r.run_id === runId).length,
+          stage: 'fetch', status: 'pending', attempts: 0, error: null, stage_log: [], cost_usd: 0,
+          created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z',
+        });
+      } else {
+        this.addItem(runId, row as Partial<ItemRow>);
+      }
+      added++;
+    }
+    return added;
   }
   async saveClassification(row: TablesInsert<'classifications'>) {
     this.classifications = this.classifications.filter((c) => !(c.item_id === row.item_id && c.prompt_version === row.prompt_version && c.vision_version === row.vision_version && c.model === row.model));

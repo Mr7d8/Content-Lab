@@ -21,6 +21,9 @@ export type ResolvedMedia = {
   music: { name: string | null; author: string | null; original: boolean | null } | null;
   metrics: SourceMetric[];
   raw: Record<string, unknown>;
+  // Paid cost of resolving this item, when it differs from the resolver's
+  // per-item rate (0 when discovery already returned the video).
+  costUsd?: number;
 };
 
 export interface MediaResolver {
@@ -82,22 +85,24 @@ export function normalizeTikTokItem(raw: Raw): ResolvedMedia | null {
 export function normalizeCreativeCenterItem(raw: Raw): ResolvedMedia | null {
   const video = obj(raw.video_info ?? raw.videoInfo);
   const urls = obj(video.video_url ?? video.videoUrl);
-  const videoUrl = str(urls['720p']) ?? str(urls['540p']) ?? str(urls['480p']) ?? str(raw.video_url) ?? str(raw.videoUrl);
+  const list = [raw.videoUrls, raw.video_urls].find(Array.isArray) as unknown[] | undefined;
+  const videoUrl = str(urls['720p']) ?? str(urls['540p']) ?? str(urls['480p']) ?? str(raw.video_url) ?? str(raw.videoUrl)
+    ?? str(list?.[0]) ?? str(obj(raw.video).url);
   if (!videoUrl) return null;
   const ctr = num(raw.ctr);
   const budget = raw.cost ?? raw.budget_level;
   return {
     videoUrl,
     downloadHeaders: {},
-    coverUrl: str(video.cover) ?? str(raw.cover),
+    coverUrl: str(video.cover) ?? str(raw.cover) ?? str(raw.coverUrl) ?? str(raw.cover_url),
     durationS: num(video.duration),
     postedAt: null,
     handle: null,
-    advertiser: str(raw.brand_name) ?? str(raw.brandName),
+    advertiser: str(raw.brand_name) ?? str(raw.brandName) ?? str(raw.advertiser) ?? str(raw.advertiserName),
     region: str(raw.country_code)?.toUpperCase() ?? null,
     industry: str(raw.industry_key) ?? str(raw.industry),
     objectiveSource: str(raw.objective_key) ?? str(raw.objective),
-    caption: str(raw.ad_title) ?? str(raw.adTitle),
+    caption: str(raw.ad_title) ?? str(raw.adTitle) ?? str(raw.adText) ?? str(raw.ad_text),
     music: null,
     metrics: [
       ...(ctr === null ? [] : [{ name: 'ctr', value: ctr, unit: 'ratio' }]),
@@ -108,9 +113,9 @@ export function normalizeCreativeCenterItem(raw: Raw): ResolvedMedia | null {
   };
 }
 
-type ApifyEnv = { token: string; tiktokActorId: string; creativeCenterActorId: string | null; fetchImpl?: typeof fetch };
+export type ApifyEnv = { token: string; tiktokActorId: string; creativeCenterActorId: string | null; fetchImpl?: typeof fetch };
 
-async function runActorSync(env: ApifyEnv, actorId: string, input: unknown): Promise<Raw[]> {
+export async function runActorSync(env: ApifyEnv, actorId: string, input: unknown): Promise<Raw[]> {
   const url = `https://api.apify.com/v2/acts/${encodeURIComponent(actorId)}/run-sync-get-dataset-items?timeout=300&memory=1024&clean=true`;
   const res = await request(url, {
     method: 'POST',
@@ -149,7 +154,19 @@ export function apifyResolver(env: ApifyEnv, costPerItemUsd: number): MediaResol
     }
   }
 
+  const usedDiscovered = new Set<string>();
   async function fetchCreativeCenter(item: Item) {
+    // Ads found by a sweep carry the actor's row, video URL included. Use it
+    // once; a retry (for example after the signed URL expired) asks again.
+    const discovered = obj(obj(item.raw_json).discovered);
+    if (Object.keys(discovered).length && !usedDiscovered.has(key(item))) {
+      usedDiscovered.add(key(item));
+      const media = normalizeCreativeCenterItem(discovered);
+      if (media) {
+        cache.set(key(item), { ...withAuth(media), costUsd: 0 });
+        return;
+      }
+    }
     if (!env.creativeCenterActorId) {
       cache.set(key(item), new Error('Creative Center links need an Apify actor: set APIFY_CREATIVE_CENTER_ACTOR_ID once one is picked'));
       return;

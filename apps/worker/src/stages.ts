@@ -68,7 +68,7 @@ export async function exists(path: string): Promise<boolean> {
 export const fetchStage: StageHandler = async (ctx) => {
   const { item, store } = ctx;
   const media = await ctx.resolver.resolve(item);
-  ctx.addCost(ctx.resolver.costPerItemUsd);
+  ctx.addCost(media.costUsd ?? ctx.resolver.costPerItemUsd);
   await mkdir(ctx.workDir, { recursive: true });
   const { hash } = await downloadVideo(media.videoUrl, videoPath(ctx.workDir), { headers: media.downloadHeaders });
 

@@ -2,6 +2,7 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DEFAULT_RATES, fitsUnderCap, type Json, type Rates } from '@content-lab/core';
 import { ProviderError, type AIProviders } from '@content-lab/core/ai';
+import { discoverForRun, type Discoverer } from './discover';
 import type { MediaResolver } from './resolve';
 import { audioPath, exists, ITEM_STAGES, LocalFilesMissing, type Stage, type StageContext, type StageHandler, videoPath } from './stages';
 import type { RunItemWithItem, RunRow, Store } from './store';
@@ -9,6 +10,8 @@ import type { RunItemWithItem, RunRow, Store } from './store';
 export type RunnerDeps = {
   store: Store;
   resolver: MediaResolver;
+  // Finds a watchlist's top ads; needed for watchlist runs only.
+  discoverer?: Discoverer;
   ai: Partial<AIProviders>;
   handlers: Partial<Record<Stage, StageHandler>>;
   tmpRoot: string;
@@ -54,7 +57,14 @@ export async function runPipeline(runId: string, deps: RunnerDeps): Promise<RunO
   let done = 0;
   let failed = 0;
   let stopReason: { status: 'paused' | 'failed'; error: string | null } | null = null;
-  const items = await store.listRunItems(runId);
+  let items = await store.listRunItems(runId);
+  // A watchlist run starts empty: find its ads first.
+  if (run.watchlist_id && items.length === 0) {
+    const found = await discoverForRun(run, spent, { store, discoverer: deps.discoverer, log, now });
+    spent = found.spent;
+    if (found.ok) items = await store.listRunItems(runId);
+    else stopReason = { status: found.status, error: found.error };
+  }
   log(`Run ${runId}: ${items.length} items, cap $${run.spend_cap_usd}, spent so far $${spent.toFixed(4)}`);
 
   for (const ri of items) {
@@ -124,7 +134,7 @@ async function processItem(
   runItem: RunItemWithItem,
   run: RunRow,
   spentBefore: number,
-  deps: Required<Omit<RunnerDeps, 'rates' | 'log' | 'now'>> & { rates: Rates; log: (m: string) => void; now: () => string },
+  deps: Required<Omit<RunnerDeps, 'rates' | 'log' | 'now' | 'discoverer'>> & { rates: Rates; log: (m: string) => void; now: () => string },
 ): Promise<{ spent: number; status: 'done' | 'needs_review' }> {
   const { store, handlers } = deps;
   const item = runItem.item;

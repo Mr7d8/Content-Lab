@@ -141,10 +141,19 @@ describe('runPipeline', () => {
 
   it('skips done items and refuses runs that are running or finished', async () => {
     const store = new MemoryStore();
-    const running = store.addRun({ status: 'running' });
+    const running = store.addRun({ status: 'running', updated_at: '2026-10-01T09:30:00Z' });
     expect(await runPipeline(running.id, deps(store, {}))).toBe('not_claimable');
     const done = store.addRun({ status: 'completed' });
     expect(await runPipeline(done.id, deps(store, {}))).toBe('not_claimable');
+  });
+
+  it('picks up a run left running by an actor that timed out', async () => {
+    const store = new MemoryStore();
+    const run = store.addRun({ status: 'running', updated_at: '2026-10-01T08:30:00Z' });
+    const item = store.addItem(run.id, {}, { stage: 'classify', status: 'running' });
+    const calls: string[] = [];
+    expect(await runPipeline(run.id, deps(store, recorder(calls)))).toBe('completed');
+    expect(calls).toEqual([`${item.id}:classify`]);
   });
 
   it('estimates the paid cost left for an item by stage', () => {
