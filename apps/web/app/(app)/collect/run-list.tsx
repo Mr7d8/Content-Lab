@@ -11,7 +11,7 @@ import { pauseRun, resumeRun } from './actions';
 type Run = Tables<'runs'>;
 
 // Run history with live progress through Supabase Realtime.
-export function RunList({ initial }: { initial: Run[] }) {
+export function RunList({ initial, watchlistNames = {} }: { initial: Run[]; watchlistNames?: Record<string, string> }) {
   const [runs, setRuns] = useState(initial);
   const [notice, setNotice] = useState('');
   const [busy, startTransition] = useTransition();
@@ -35,7 +35,7 @@ export function RunList({ initial }: { initial: Run[] }) {
     };
   }, []);
 
-  if (!runs.length) return <p className="card p-5 text-sm text-sub">No runs yet. Paste a few links above to start.</p>;
+  if (!runs.length) return <p className="card p-5 text-sm text-sub">No runs yet. Use Research now on a watchlist, or paste links below.</p>;
 
   return (
     <div className="card divide-y divide-[var(--line)]">
@@ -44,17 +44,27 @@ export function RunList({ initial }: { initial: Run[] }) {
         const progress = run.items_requested ? Math.min(1, (run.items_done + run.items_failed) / run.items_requested) : 0;
         const canPause = (run.status === 'running' || run.status === 'queued') && !run.pause_requested;
         const canResume = ['paused', 'partial', 'failed'].includes(run.status) || (run.status === 'running' && run.pause_requested);
+        // Watchlist runs start empty while the source is searched.
+        const searching = !!run.watchlist_id && run.items_requested === 0 && (run.status === 'running' || run.status === 'queued');
+        const nothingNew = !!run.watchlist_id && run.items_requested === 0 && run.status === 'completed';
         return (
           <div key={run.id} className="grid gap-2 px-5 py-4 sm:grid-cols-[1fr_auto] sm:items-center">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <StatusBadge status={run.pause_requested && run.status === 'running' ? 'pausing' : run.status} />
                 <span className="text-sm font-medium">
-                  {run.items_done}/{run.items_requested} items
+                  {searching ? 'Searching for top ads...' : nothingNew ? 'No new ads' : `${run.items_done}/${run.items_requested} items`}
                   {run.items_failed > 0 && <span className="text-orange"> · {run.items_failed} need review</span>}
                 </span>
+                {run.trigger === 'schedule' && <span className="chip">Scheduled</span>}
                 <span className="text-xs text-faint">{new Date(run.created_at).toLocaleString()}</span>
               </div>
+              {run.watchlist_id && (
+                <p className="mt-1 truncate text-xs text-sub">
+                  Research: {watchlistNames[run.watchlist_id] ?? 'removed watchlist'}
+                  {nothingNew && ' · its top ads are already in the Library'}
+                </p>
+              )}
               <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-fill">
                 <div className="h-full rounded-full bg-accent transition-[width] duration-500" style={{ width: `${progress * 100}%` }} />
               </div>

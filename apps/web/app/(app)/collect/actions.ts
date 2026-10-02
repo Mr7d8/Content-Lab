@@ -2,10 +2,9 @@
 
 import { estimateRun, type SourceId } from '@content-lab/core';
 import { revalidatePath } from 'next/cache';
-import { startWorkerActor } from '@/lib/apify';
-import { apifyEnv } from '@/lib/env';
 import { prepareLinks, type RejectedLink } from '@/lib/import';
-import { createClient, type ServerClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
+import { startWorker } from '@/lib/worker';
 
 export type ImportState = {
   ok: boolean;
@@ -13,18 +12,6 @@ export type ImportState = {
   runId?: string;
   rejected?: RejectedLink[];
 };
-
-async function startWorker(supabase: ServerClient, runId: string): Promise<string> {
-  const env = apifyEnv();
-  if (!env) return `Worker not started: set APIFY_TOKEN and APIFY_WORKER_ACTOR_ID, or run it locally with: pnpm worker:dev --run ${runId}`;
-  const started = await startWorkerActor(runId, env);
-  if (!started.ok) {
-    await supabase.from('runs').update({ error: started.message }).eq('id', runId);
-    return started.message;
-  }
-  await supabase.from('runs').update({ worker_run_id: started.workerRunId, error: null }).eq('id', runId);
-  return 'Worker started on Apify.';
-}
 
 export async function createImportRun(_prev: ImportState, formData: FormData): Promise<ImportState> {
   const supabase = await createClient();
