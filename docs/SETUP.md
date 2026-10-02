@@ -23,6 +23,7 @@ Gemini's free tier may use prompts to improve Google's models. That is fine for 
    - `20261001000000_init.sql`: tables, RLS, the private `frames` bucket, Realtime.
    - `20261001000100_first_sweep_watchlists.sql`: the first sweep watchlists.
    - `20261002000000_research_mode.sql`: research mode (watchlist schedule columns, `app_settings` with the monthly cap, `month_spend_usd()`).
+   - `20261002000100_close_functions_to_anon.sql`: signed-out visitors cannot call the app's functions.
 3. Add yourself to the allowlist (only listed emails can see any data):
 
    ```sql
@@ -35,7 +36,7 @@ Gemini's free tier may use prompts to improve Google's models. That is fine for 
 
    Email magic links are on by default.
 
-To check the SQL itself on a throwaway local Postgres: `DATABASE_URL=postgres://... pnpm db:check` (22 checks). After changing a migration, regenerate types with `pnpm db:types` (or `supabase gen types typescript`).
+To check the SQL itself on a throwaway local Postgres: `DATABASE_URL=postgres://... pnpm db:check` (23 checks). After changing a migration, regenerate types with `pnpm db:types` (or `supabase gen types typescript`).
 
 ## 3. Environment
 

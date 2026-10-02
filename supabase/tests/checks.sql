@@ -200,3 +200,15 @@ do $$ begin
   exception when insufficient_privilege then raise notice 'PASS anon denied settings'; end;
 end $$;
 rollback;
+
+-- 10. Signed-out visitors cannot call the app's functions (Supabase grants
+-- EXECUTE on new functions to anon directly, not only through PUBLIC).
+do $$ begin
+  if has_function_privilege('anon', 'public.is_team_member()', 'execute') then raise exception 'FAIL anon can call is_team_member()'; end if;
+  if has_function_privilege('anon', 'public.month_spend_usd()', 'execute') then raise exception 'FAIL anon can call month_spend_usd()'; end if;
+  if not has_function_privilege('authenticated', 'public.is_team_member()', 'execute')
+     or not has_function_privilege('authenticated', 'public.month_spend_usd()', 'execute') then
+    raise exception 'FAIL signed-in users lost access to the app functions';
+  end if;
+  raise notice 'PASS app functions closed to anon';
+end $$;
