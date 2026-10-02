@@ -62,6 +62,8 @@ Never prefix a secret with `NEXT_PUBLIC_`: that ships it to the browser. Vercel 
 
 Decodes run up to 5 minutes per ad, which needs Fluid compute (on by default for new Vercel projects).
 
+Keep one Vercel project for this repository: each connected project builds every push, and the Hobby plan allows 100 deployments a day across the account. `apps/web/vercel.json` turns off deployments for `claude/` branches (the branches Claude Code works on); main still deploys to production on every merge.
+
 ## 4. Local development
 
 ```sh
