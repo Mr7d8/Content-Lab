@@ -2,11 +2,13 @@ import {
   candidateCount,
   creativeCenterCandidate,
   creativeCenterInput,
+  creativeCenterNotes,
   discoveryCost,
   expandRegion,
   fitsUnderCap,
   lookbackDays,
   organicCandidate,
+  OPTIONAL_CREATIVE_CENTER_FIELDS,
   organicInput,
   pickTop,
   type Candidate,
@@ -17,20 +19,44 @@ import { ProviderError } from '@content-lab/core/ai';
 import { runActorSync, type ApifyEnv } from './resolve';
 import type { RunRow, Store, WatchlistRow } from './store';
 
-// Finds a watchlist's top ads at its source.
+// Finds a watchlist's top ads at its source. Notes say what the search could
+// not filter on.
 export interface Discoverer {
-  discover(watchlist: WatchlistRow): Promise<{ candidates: Candidate[]; costUsd: number }>;
+  discover(watchlist: WatchlistRow): Promise<{ candidates: Candidate[]; costUsd: number; notes?: string[] }>;
 }
 
 const notNull = <T>(v: T | null): v is T => v !== null;
+
+// "Input is not valid: Field input.objective must be ..." names the field.
+export function rejectedInputField(error: unknown): string | null {
+  if (!(error instanceof ProviderError) || error.status !== 400) return null;
+  return error.message.match(/Field input\.([A-Za-z]+)/)?.[1] ?? null;
+}
 
 export function apifyDiscoverer(env: ApifyEnv): Discoverer {
   return {
     async discover(w) {
       if (w.source === 'tiktok_creative_center') {
-        if (!env.creativeCenterActorId) throw new Error('Creative Center watchlists need APIFY_CREATIVE_CENTER_ACTOR_ID');
-        const rows = await runActorSync(env, env.creativeCenterActorId, creativeCenterInput(w));
-        return { candidates: rows.map(creativeCenterCandidate).filter(notNull), costUsd: discoveryCost(rows.length) };
+        const actorId = env.creativeCenterActorId;
+        if (!actorId) throw new Error('Creative Center watchlists need APIFY_CREATIVE_CENTER_ACTOR_ID');
+        // Search without an optional filter the actor rejects, rather than not at all.
+        const input = creativeCenterInput(w);
+        const dropped: string[] = [];
+        for (;;) {
+          try {
+            const rows = await runActorSync(env, actorId, input);
+            return {
+              candidates: rows.map(creativeCenterCandidate).filter(notNull),
+              costUsd: discoveryCost(rows.length),
+              notes: creativeCenterNotes(w, dropped),
+            };
+          } catch (error) {
+            const field = rejectedInputField(error);
+            if (!field || !(OPTIONAL_CREATIVE_CENTER_FIELDS as readonly string[]).includes(field) || !(field in input)) throw error;
+            delete input[field];
+            dropped.push(field);
+          }
+        }
       }
       if (w.source === 'tiktok_organic') {
         const rows = await runActorSync(env, env.tiktokActorId, organicInput(w));
@@ -61,7 +87,7 @@ export function itemFromCandidate(c: Candidate, w: WatchlistRow): TablesInsert<'
 }
 
 export type DiscoveryResult =
-  | { ok: true; spent: number; kept: number }
+  | { ok: true; spent: number; kept: number; note: string | null }
   | { ok: false; spent: number; status: 'paused' | 'failed'; error: string };
 
 // First step of a watchlist run: find candidates, skip what the Library
@@ -101,5 +127,7 @@ export async function discoverForRun(
   await store.updateRun(run.id, { items_requested: added, cost_actual_usd: Number(spent.toFixed(4)) });
   await store.updateWatchlist(w.id, { last_swept_at: deps.now() });
   log(`Watchlist "${w.name}": ${found.candidates.length} found, ${existing.size} already collected, ${added} new kept`);
-  return { ok: true, spent, kept: added };
+  const note = found.notes?.length ? found.notes.join('. ') : null;
+  if (note) log(note);
+  return { ok: true, spent, kept: added, note };
 }

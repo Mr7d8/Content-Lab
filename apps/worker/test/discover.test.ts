@@ -47,6 +47,15 @@ describe('watchlist runs', () => {
     expect(store.watchlists.get(w.id)?.last_swept_at).toBe(NOW);
   });
 
+  it('shows what the search could not filter on once the run finishes', async () => {
+    const store = new MemoryStore();
+    const w = store.addWatchlist();
+    const run = store.addRun({ source: 'tiktok_creative_center', watchlist_id: w.id });
+    const discoverer: Discoverer = { discover: async () => ({ candidates: [cc('10000001', 0.05)], costUsd: 0.008, notes: ['Searched all industries'] }) };
+    expect(await runPipeline(run.id, deps(store, discoverer))).toBe('completed');
+    expect(store.runs.get(run.id)?.error).toBe('Searched all industries');
+  });
+
   it('completes with nothing to do when every top ad is already collected', async () => {
     const store = new MemoryStore();
     const w = store.addWatchlist();
@@ -98,9 +107,36 @@ describe('apifyDiscoverer', () => {
     const { candidates, costUsd } = await d.discover(w);
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toContain('/acts/fetch_cat~tiktok-ads-library-scraper/run-sync-get-dataset-items');
-    expect(JSON.parse(String(init.body))).toEqual({ period: 30, maxItems: 30, regions: ['MA'], industry: 'ecommerce', objective: 'Conversions' });
+    expect(JSON.parse(String(init.body))).toEqual({ period: '30', maxItems: 30, regions: ['MA'], objective: 'campaign_objective_conversion' });
     expect(candidates.map((c) => c.externalId)).toEqual(['7301234567890123456']);
     expect(costUsd).toBeCloseTo(0.011);
+  });
+
+  it('searches again without a filter the actor rejects, and says so', async () => {
+    const rejected = Response.json({ error: { message: 'Input is not valid: Field input.objective must be equal to one of the allowed values' } }, { status: 400 });
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(rejected)
+      .mockResolvedValueOnce(Response.json([{ material_id: '7301234567890123456', ctr: 0.02 }]));
+    const store = new MemoryStore();
+    const w = store.addWatchlist({ type: 'industry', value: 'ecommerce', region: 'MA', objective: 'app_install', refresh_cadence: 'monthly' });
+    const d = apifyDiscoverer({ token: 'apify_api_test', tiktokActorId: 'clockworks~tiktok-scraper', creativeCenterActorId: 'cc', fetchImpl: fetchImpl as unknown as typeof fetch });
+    const { candidates, notes } = await d.discover(w);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const retry = JSON.parse(String((fetchImpl.mock.calls[1] as unknown as [string, RequestInit])[1].body));
+    expect(retry).not.toHaveProperty('objective');
+    expect(candidates).toHaveLength(1);
+    expect(notes).toEqual([
+      'Searched all industries: "ecommerce" is not a Creative Center industry key (label_...)',
+      'Searched without the objective filter: the Creative Center actor did not accept it',
+    ]);
+  });
+
+  it('still fails on a rejected field it cannot drop', async () => {
+    const fetchImpl = vi.fn(async () => Response.json({ error: { message: 'Input is not valid: Field input.period must be string' } }, { status: 400 }));
+    const store = new MemoryStore();
+    const d = apifyDiscoverer({ token: 'apify_api_test', tiktokActorId: 'x', creativeCenterActorId: 'cc', fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(d.discover(store.addWatchlist())).rejects.toThrow(/input.period/);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('searches organic hashtags with the TikTok scraper', async () => {

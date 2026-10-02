@@ -45,9 +45,9 @@ export function expandRegion(region: string | null): string[] | null {
   return [...(REGION_GROUPS[region] ?? [region])];
 }
 
-// Our objectives mapped to the Creative Center objective filter.
-// Confirm the exact filter values when the Creative Center actor is chosen.
+// Our objectives mapped to Creative Center's objective keys. If the actor
+// rejects them, the search runs without the filter and the run says so.
 export const CREATIVE_CENTER_OBJECTIVE = {
-  app_install: 'App Installs',
-  purchase: 'Conversions',
+  app_install: 'campaign_objective_app_installs',
+  purchase: 'campaign_objective_conversion',
 } as const;

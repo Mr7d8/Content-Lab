@@ -58,12 +58,18 @@ export async function runPipeline(runId: string, deps: RunnerDeps): Promise<RunO
   let failed = 0;
   let stopReason: { status: 'paused' | 'failed'; error: string | null } | null = null;
   let items = await store.listRunItems(runId);
+  // Shown on the run when it finishes: what the search could not filter on.
+  let note: string | null = null;
   // A watchlist run starts empty: find its ads first.
   if (run.watchlist_id && items.length === 0) {
     const found = await discoverForRun(run, spent, { store, discoverer: deps.discoverer, log, now });
     spent = found.spent;
-    if (found.ok) items = await store.listRunItems(runId);
-    else stopReason = { status: found.status, error: found.error };
+    if (found.ok) {
+      items = await store.listRunItems(runId);
+      note = found.note;
+    } else {
+      stopReason = { status: found.status, error: found.error };
+    }
   }
   log(`Run ${runId}: ${items.length} items, cap $${run.spend_cap_usd}, spent so far $${spent.toFixed(4)}`);
 
@@ -124,7 +130,7 @@ export async function runPipeline(runId: string, deps: RunnerDeps): Promise<RunO
     cost_actual_usd: Number(spent.toFixed(4)),
     finished_at: outcome === 'paused' ? null : now(),
     pause_requested: false,
-    error: stopReason?.error ?? null,
+    error: stopReason?.error ?? note,
   });
   log(`Run ${runId} ${outcome}: ${done} done, ${failed} need review, $${spent.toFixed(4)} spent`);
   return outcome;

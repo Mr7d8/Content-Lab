@@ -3,6 +3,7 @@ import {
   candidateCount,
   creativeCenterCandidate,
   creativeCenterInput,
+  creativeCenterNotes,
   discoveryCost,
   dueWatchlists,
   isDue,
@@ -46,15 +47,23 @@ describe('due logic', () => {
 describe('actor inputs', () => {
   const base = { max_items: 10, refresh_cadence: 'monthly', objective: null, region: null } as const;
 
-  it('builds a Creative Center category sweep', () => {
-    expect(creativeCenterInput({ ...base, type: 'industry', value: 'ecommerce', region: 'MA', objective: 'app_install' })).toEqual({
-      period: 30, maxItems: 30, regions: ['MA'], industry: 'ecommerce', objective: 'App Installs',
+  it('builds a Creative Center category sweep, with the industry only when it is a Creative Center key', () => {
+    expect(creativeCenterInput({ ...base, type: 'industry', value: 'label_22000000000', region: 'MA', objective: 'app_install' })).toEqual({
+      period: '30', maxItems: 30, regions: ['MA'], industry: 'label_22000000000', objective: 'campaign_objective_app_installs',
     });
+    expect(creativeCenterInput({ ...base, type: 'industry', value: 'ecommerce', region: 'MA', objective: 'purchase' })).toEqual({
+      period: '30', maxItems: 30, regions: ['MA'], objective: 'campaign_objective_conversion',
+    });
+    expect(creativeCenterNotes({ type: 'industry', value: 'ecommerce' }, ['objective'])).toEqual([
+      'Searched all industries: "ecommerce" is not a Creative Center industry key (label_...)',
+      'Searched without the objective filter: the Creative Center actor did not accept it',
+    ]);
+    expect(creativeCenterNotes({ type: 'advertiser', value: 'Temu' }, [])).toEqual([]);
   });
 
   it('searches advertisers by keyword in any region, over the last week for weekly lists', () => {
     expect(creativeCenterInput({ ...base, type: 'advertiser', value: 'Temu', refresh_cadence: 'weekly' })).toEqual({
-      period: 7, maxItems: 30, keywords: ['Temu'],
+      period: '7', maxItems: 30, keywords: ['Temu'],
     });
   });
 

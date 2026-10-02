@@ -54,17 +54,35 @@ export function candidateCount(maxItems: number): number {
   return Math.min(50, maxItems * 3);
 }
 
-// Input for the Creative Center Top Ads actor (fetch_cat/tiktok-ads-library-scraper).
-// Field names follow its listing; confirm them against a real run.
+// Creative Center industry filters are keys like label_14104000000.
+export const isCreativeCenterIndustryKey = (value: string) => /^label_\d+$/.test(value);
+
+// Filters the search can run without when the actor does not accept them.
+export const OPTIONAL_CREATIVE_CENTER_FIELDS = ['industry', 'objective'] as const;
+
+// Input for the Creative Center Top Ads actor (fetch_cat/tiktok-ads-library-scraper):
+// keywords and regions are lists, period is "7", "30" or "180".
 export function creativeCenterInput(w: Pick<Watchlist, 'type' | 'value' | 'region' | 'objective' | 'refresh_cadence' | 'max_items'>): Raw {
-  const input: Raw = { period: lookbackDays(w.refresh_cadence), maxItems: candidateCount(w.max_items) };
+  const input: Raw = { period: String(lookbackDays(w.refresh_cadence)), maxItems: candidateCount(w.max_items) };
   const countries = expandRegion(w.region);
   if (countries) input.regions = countries;
   if (w.type === 'advertiser' || w.type === 'keyword') input.keywords = [w.value];
-  if (w.type === 'industry') input.industry = w.value;
+  // A plain word like "ecommerce" is not a Creative Center key: search the
+  // whole market until the real key is known (see creativeCenterNotes).
+  if (w.type === 'industry' && isCreativeCenterIndustryKey(w.value)) input.industry = w.value;
   const objective = w.objective ? CREATIVE_CENTER_OBJECTIVE[w.objective as keyof typeof CREATIVE_CENTER_OBJECTIVE] : undefined;
   if (objective) input.objective = objective;
   return input;
+}
+
+// What a Creative Center search could not filter on, for the run's note.
+export function creativeCenterNotes(w: Pick<Watchlist, 'type' | 'value'>, dropped: readonly string[]): string[] {
+  const notes: string[] = [];
+  if (w.type === 'industry' && !isCreativeCenterIndustryKey(w.value)) {
+    notes.push(`Searched all industries: "${w.value}" is not a Creative Center industry key (label_...)`);
+  }
+  if (dropped.length) notes.push(`Searched without the ${dropped.join(' and ')} filter: the Creative Center actor did not accept it`);
+  return notes;
 }
 
 // Input for clockworks/tiktok-scraper in search mode. No video download here:
