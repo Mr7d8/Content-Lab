@@ -10,13 +10,23 @@ import { pauseRun, resumeRun } from './actions';
 
 type Run = Tables<'runs'>;
 
+const STUCK_AFTER_MS = 2 * 60_000;
+
 // Run history with live progress through Supabase Realtime.
 export function RunList({ initial, watchlistNames = {} }: { initial: Run[]; watchlistNames?: Record<string, string> }) {
   const [runs, setRuns] = useState(initial);
   const [notice, setNotice] = useState('');
   const [busy, startTransition] = useTransition();
+  // Set after mount so server and browser render the same buttons.
+  const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => setRuns(initial), [initial]);
+
+  useEffect(() => {
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const channel = browserClient()
@@ -43,7 +53,9 @@ export function RunList({ initial, watchlistNames = {} }: { initial: Run[]; watc
       {runs.map((run) => {
         const progress = run.items_requested ? Math.min(1, (run.items_done + run.items_failed) / run.items_requested) : 0;
         const canPause = (run.status === 'running' || run.status === 'queued') && !run.pause_requested;
-        const canResume = ['paused', 'partial', 'failed'].includes(run.status) || (run.status === 'running' && run.pause_requested);
+        // A queued run the worker never picked up (it failed on Apify before starting) can be started again.
+        const neverStarted = run.status === 'queued' && !run.started_at && now !== null && now - Date.parse(run.created_at) > STUCK_AFTER_MS;
+        const canResume = ['paused', 'partial', 'failed'].includes(run.status) || (run.status === 'running' && run.pause_requested) || neverStarted;
         // Watchlist runs start empty while the source is searched.
         const searching = !!run.watchlist_id && run.items_requested === 0 && (run.status === 'running' || run.status === 'queued');
         const nothingNew = !!run.watchlist_id && run.items_requested === 0 && run.status === 'completed';

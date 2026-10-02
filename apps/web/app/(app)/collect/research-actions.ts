@@ -28,9 +28,18 @@ export async function researchNow(watchlistId: string): Promise<string> {
 
   // A run that has not reported for 75 minutes was left behind by a timed-out worker.
   const recent = new Date(Date.now() - 75 * 60_000).toISOString();
-  const { data: open } = await supabase.from('runs').select('id').eq('watchlist_id', w.id)
+  const { data: open } = await supabase.from('runs').select('id, status, started_at, created_at').eq('watchlist_id', w.id)
     .in('status', ['queued', 'running']).gt('updated_at', recent).limit(1);
-  if (open?.length) return `"${w.name}" is already being searched.`;
+  const current = open?.[0];
+  if (current) {
+    // Queued for over two minutes and never picked up: the worker failed on
+    // Apify before starting, so start it again for the same run.
+    const stuck = current.status === 'queued' && !current.started_at && Date.now() - Date.parse(current.created_at) > 2 * 60_000;
+    if (!stuck) return `"${w.name}" is already being searched.`;
+    const message = await startWorker(supabase, current.id);
+    revalidatePath('/collect');
+    return `Restarted the search for "${w.name}". ${message}`;
+  }
 
   const monthSpend = Number(spend ?? 0);
   const cap = sweepRunCap(settings, monthSpend);
