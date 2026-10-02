@@ -290,6 +290,29 @@ body {
   }
 }
 
+/* The glow's main pool drifts slowly along the hero text and back: its
+   center from 15% to 47% of the content width. The pool is 104% of that
+   width, so 30.8% of its own width is 32% of the column. Transform only, so
+   the browser moves it without repainting. */
+@keyframes ambient-drift {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(30.8%);
+  }
+}
+.ambient-drift {
+  animation: ambient-drift 16s ease-in-out infinite alternate;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ambient-drift {
+    animation: none;
+    transform: translateX(15.4%);
+  }
+}
+
 /* The hero's text over the glow (see glowInk) fades along with it. */
 .glow-ink {
   transition: --sub 0.9s, --faint 0.9s;
