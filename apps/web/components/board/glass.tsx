@@ -49,7 +49,7 @@ const GRID = 16;
 // The glow color for a cover, read once from a 16 by 16 copy of it on a
 // canvas (see lib/ambient). The purple when there is no cover or it cannot
 // be read (no CORS).
-function useCoverColor(src: string | null): string {
+export function useCoverColor(src: string | null): string {
   const [color, setColor] = useState<string>(() => (src && colors.get(src)) || AMBIENT_PURPLE);
   useEffect(() => {
     if (!src) return setColor(AMBIENT_PURPLE);
@@ -97,10 +97,9 @@ const BLOBS = [
 ];
 
 // A soft glow at the top of the page in the selected ad's main color (purple
-// when the cover is gray). It fades out before the content below and
-// scrolls away with the page.
-export function Ambient({ src }: { src: string | null }) {
-  const color = useCoverColor(src);
+// when the cover is gray; see useCoverColor). It fades out before the content
+// below and scrolls away with the page.
+export function Ambient({ color }: { color: string }) {
   const layers = BLOBS.map((b) => `radial-gradient(${b.size} at ${b.at}, ${alpha(color, b.a)} 0%, ${alpha(color, b.a * 0.45)} 38%, transparent 76%)`);
   return (
     <div

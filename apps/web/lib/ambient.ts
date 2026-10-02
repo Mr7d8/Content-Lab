@@ -51,3 +51,43 @@ export function ambientColor(pixels: [number, number, number][]): string {
   // they go a little deeper to show as much on the white page.
   return `hsl(${hue} 85% ${hue >= 35 && hue <= 190 ? 62 : 72}%)`;
 }
+
+export function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+}
+
+const luminance = ([r, g, b]: [number, number, number]) => {
+  const lin = (c: number) => (c / 255 <= 0.03928 ? c / 255 / 12.92 : ((c / 255 + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+};
+
+export function contrast(a: [number, number, number], b: [number, number, number]): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+// The page under the title: white with the glow at its strongest (half
+// strength, a little more for safety).
+const GLOW_PEAK = 0.55;
+const INK_DEFAULT = { sub: '#6e6e73', faint: '#86868b' };
+
+// The hero's secondary text over the glow: a dark shade of the glow's own hue,
+// the lightest that still reads where the glow is strongest. Sub at 6:1,
+// faint at 4.5:1 (both are under 4:1 in plain gray on a bright glow).
+export function glowInk(glow: string): { sub: string; faint: string } {
+  const m = /^hsl\((\d+(?:\.\d+)?) (\d+(?:\.\d+)?)% (\d+(?:\.\d+)?)%\)$/.exec(glow);
+  if (!m) return INK_DEFAULT;
+  const hue = Number(m[1]);
+  const rgb = hslToRgb(hue, Number(m[2]) / 100, Number(m[3]) / 100);
+  const bg = rgb.map((c) => Math.round(255 * (1 - GLOW_PEAK) + c * GLOW_PEAK)) as [number, number, number];
+  const shade = (target: number) => {
+    for (let l = 60; l >= 10; l--) {
+      if (contrast(hslToRgb(hue, 0.2, l / 100), bg) >= target) return `hsl(${hue} 20% ${l}%)`;
+    }
+    return `hsl(${hue} 20% 10%)`;
+  };
+  return { sub: shade(6), faint: shade(4.5) };
+}
