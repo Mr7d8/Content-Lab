@@ -205,6 +205,7 @@ export function Hero({
   scan,
   top,
   onSelect,
+  market,
 }: {
   board: Tables<'watchlists'>;
   headline: string;
@@ -212,6 +213,8 @@ export function Hero({
   scan: ScanView;
   top: BoardAd[];
   onSelect: (id: string) => void;
+  // The market filter, shown on the scan line.
+  market?: React.ReactNode;
 }) {
   return (
     <section className="grid gap-6 pb-6 pt-5 sm:pt-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
@@ -230,8 +233,14 @@ export function Hero({
           <span className="text-accent">.</span>
         </h1>
         <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-sub">{headline}</p>
-        <div className="mt-2.5">
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2.5">
           <ScanLine board={board} scan={scan} count={count} />
+          {market && (
+            <>
+              <span aria-hidden className="hidden h-4 w-px bg-[var(--fill-strong)] sm:block" />
+              {market}
+            </>
+          )}
         </div>
       </div>
       <CoverStack ads={top} source={board.source} onSelect={onSelect} />

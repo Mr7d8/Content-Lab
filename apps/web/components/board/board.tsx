@@ -121,8 +121,8 @@ export function Board({ data }: { data: BoardData }) {
           scan={scan}
           top={ads.slice(0, 3)}
           onSelect={select}
+          market={<MarketFilter value={market} counts={counts} onChange={setMarket} />}
         />
-        <MarketFilter value={market} counts={counts} onChange={setMarket} />
         <Kpis stats={stats} source={source} decoding={queue.active.size} cover={ads[0]?.cover ?? null} />
 
         <section className="mt-10" aria-labelledby="overview-title">
