@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dueWatchlists, isDue, nextSweepAt, sweepRunCap } from '../src/discovery';
+import { dueWatchlists, isDue, nextSweepAt } from '../src/discovery';
 
 const NOW = new Date('2026-10-02T06:00:00Z');
 const daysAgo = (d: number) => new Date(NOW.getTime() - d * 86_400_000).toISOString();
@@ -27,15 +27,5 @@ describe('due logic', () => {
       { id: 'e', active: true, refresh_cadence: 'weekly', last_swept_at: daysAgo(2), source: 'tiktok_organic' },
     ];
     expect(dueWatchlists(list, NOW).map((w) => w.id)).toEqual(['b', 'a', 'c']);
-  });
-});
-
-describe('budget', () => {
-  it('limits the scan cap to what is left of the month', () => {
-    const settings = { monthly_spend_cap_usd: 5, sweep_spend_cap_usd: 0.5 };
-    expect(sweepRunCap(settings, 1)).toBe(0.5);
-    expect(sweepRunCap(settings, 4.8)).toBeCloseTo(0.2);
-    expect(sweepRunCap(settings, 5)).toBe(0);
-    expect(sweepRunCap(settings, 6)).toBe(0);
   });
 });

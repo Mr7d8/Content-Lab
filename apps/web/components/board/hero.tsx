@@ -1,6 +1,6 @@
 'use client';
 
-import { DECODE_ESTIMATE_USD, type Tables } from '@content-lab/core';
+import { DECODE_ESTIMATE_USD, estimateScan, type Tables } from '@content-lab/core';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { deleteBoard, updateBoard } from '@/app/(app)/b/actions';
@@ -8,7 +8,7 @@ import { motion } from 'motion/react';
 import { agoText, axesFor, boardEyebrow, formatCount, type BoardAd } from '@/lib/board-view';
 import { Cover } from './cover';
 import { Glow } from './glass';
-import { CADENCES, PERIODS, scheduleText } from '@/lib/watchlists';
+import { ADS_PER_SCAN, CADENCES, PERIODS, scheduleText } from '@/lib/watchlists';
 import { Popover } from './popover';
 import type { ScanView } from './use-scan';
 
@@ -27,9 +27,9 @@ function BoardMenu({ board }: { board: Tables<'watchlists'> }) {
   const opts = <T extends string | number>(label: string, value: T, options: { value: T; label: string }[], onPick: (v: T) => void) => (
     <div className="space-y-1.5">
       <p className="mono text-faint">{label}</p>
-      <div className="segmented" role="group" aria-label={label}>
+      <div className="segmented flex w-full" role="group" aria-label={label}>
         {options.map((o) => (
-          <button key={String(o.value)} type="button" aria-pressed={o.value === value} disabled={pending} onClick={() => onPick(o.value)}>{o.label}</button>
+          <button key={String(o.value)} type="button" className="flex-1 !px-1.5" aria-pressed={o.value === value} disabled={pending} onClick={() => onPick(o.value)}>{o.label}</button>
         ))}
       </div>
     </div>
@@ -60,7 +60,8 @@ function BoardMenu({ board }: { board: Tables<'watchlists'> }) {
           </form>
           {opts('Schedule', board.refresh_cadence, CADENCES.map((c) => ({ value: c as string, label: c === 'manual' ? 'Manual' : c === 'weekly' ? 'Weekly' : 'Monthly' })), (v) => save({ refresh_cadence: v }))}
           {board.source === 'tiktok_creative_center' && opts('Period', board.period_days, PERIODS.map((p) => ({ value: p as number, label: `${p} days` })), (v) => save({ period_days: v }))}
-          {opts('Ads per scan', board.max_items, [10, 20, 30, 50].map((n) => ({ value: n, label: String(n) })), (v) => save({ max_items: v }))}
+          {opts('Ads per scan', board.max_items, ADS_PER_SCAN.map((n) => ({ value: n as number, label: String(n) })), (v) => save({ max_items: v }))}
+          <p className="-mt-2.5 text-[11px] text-faint">About ${estimateScan(board.max_items).toFixed(2)} per scan, paid per ad found.</p>
           {message && <p className="text-xs text-red" role="alert">{message}</p>}
           <div className="border-t border-[var(--line)] pt-3">
             <button

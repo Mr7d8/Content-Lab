@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { creativeCenterAd, creativeCenterScanInput, estimateScan, organicAd, organicScanInput, scanVideoUrl } from '../src/scan';
+import { creativeCenterAd, creativeCenterScanInput, estimateScan, organicAd, organicScanInput, scanBudget, scanVideoUrl } from '../src/scan';
 import { fitsObjective } from '../src/sources';
 
 // Shape of a real fetch_cat/tiktok-ads-library-scraper row (2026-10-02 scan).
@@ -76,5 +76,20 @@ describe('fitsObjective', () => {
     expect(fitsObjective('purchase', null)).toBe(true);
     expect(fitsObjective(null, 'campaign_objective_reach')).toBe(true);
     expect(fitsObjective('brand', 'campaign_objective_reach')).toBe(true);
+  });
+});
+
+describe('scanBudget', () => {
+  const settings = { monthly_spend_cap_usd: 5 };
+
+  it('lets a 200-ad scan through when the month has room, capping the charge at half again the estimate', () => {
+    expect(estimateScan(200)).toBeCloseTo(0.605);
+    expect(scanBudget(settings, 0.12, 200)).toEqual({ ok: true, estimate: estimateScan(200), chargeCap: 0.9075 });
+  });
+
+  it('never lets the charge pass what is left of the month', () => {
+    expect(scanBudget(settings, 4.5, 100)).toMatchObject({ ok: true, chargeCap: 0.4575 });
+    expect(scanBudget(settings, 4.7, 100)).toEqual({ ok: false, estimate: estimateScan(100), left: expect.closeTo(0.3, 5) });
+    expect(scanBudget({ monthly_spend_cap_usd: 0 }, 0, 10)).toMatchObject({ ok: false, left: 0 });
   });
 });

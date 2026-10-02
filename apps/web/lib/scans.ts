@@ -1,6 +1,6 @@
 import 'server-only';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { estimateScan, scanInput, sweepRunCap, type TablesInsert } from '@content-lab/core';
+import { estimateScan, scanBudget, scanInput, type TablesInsert } from '@content-lab/core';
 import type { AdminClient } from './admin';
 import { FINISHED_RUN_STATUSES, getActorRun, getDatasetItems, startActorRun } from './apify';
 import { cacheCover } from './covers';
@@ -61,14 +61,19 @@ export async function startScan(admin: AdminClient, boardId: string, trigger: 'm
     admin.rpc('month_spend_usd'),
   ]);
   if (!settings) return { ok: false, message: 'Settings are missing: run the database migrations.' };
-  const estimate = estimateScan(board.max_items);
-  const cap = sweepRunCap(settings, Number(spend ?? 0));
-  if (cap < estimate) return { ok: false, message: `This month's budget is used ($${Number(spend ?? 0).toFixed(2)} of $${Number(settings.monthly_spend_cap_usd).toFixed(2)}).` };
+  const budget = scanBudget(settings, Number(spend ?? 0), board.max_items);
+  if (!budget.ok) {
+    return {
+      ok: false,
+      message: `This scan of ${board.max_items} ads needs about $${budget.estimate.toFixed(2)}, and $${budget.left.toFixed(2)} is left of this month's $${Number(settings.monthly_spend_cap_usd).toFixed(2)} cap. Raise the cap or scan fewer ads.`,
+    };
+  }
+  const cap = budget.chargeCap;
 
   const now = new Date().toISOString();
   const row: TablesInsert<'runs'> = {
     source: board.source, watchlist_id: board.id, kind: 'scan', trigger, status: 'running', started_at: now,
-    spend_cap_usd: cap, cost_estimate_usd: Number(estimate.toFixed(4)),
+    spend_cap_usd: cap, cost_estimate_usd: Number(budget.estimate.toFixed(4)),
   };
   const { data: run, error } = await admin.from('runs').insert(row).select('id').single();
   if (error) return { ok: false, message: `Could not create the scan: ${error.message}` };

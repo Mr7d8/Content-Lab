@@ -1,6 +1,7 @@
 import {
   CADENCE_DAYS,
   DISCOVERY_SOURCES,
+  MAX_SCAN_ADS,
   nextSweepAt,
   REGION_GROUPS,
   REGION_NAMES,
@@ -27,6 +28,8 @@ export const TYPE_LABELS: Record<string, string> = {
 export const OBJECTIVES = ['app_install', 'purchase'] as const;
 export const CADENCES = ['weekly', 'monthly', 'manual'] as const;
 export const PERIODS = [7, 30, 180] as const;
+// Choices offered in the board menu.
+export const ADS_PER_SCAN = [10, 20, 30, 50, 100, 200] as const;
 
 export function regionLabel(region: string | null): string {
   return region ? (REGION_NAMES[region] ?? region) : 'Any region';
@@ -55,7 +58,7 @@ export function parseWatchlistForm(get: (name: string) => string | null): Parsed
   const cadence = get('refresh_cadence') ?? 'weekly';
   if (!(CADENCES as readonly string[]).includes(cadence)) return { ok: false, message: 'Pick how often to refresh.' };
   const maxItems = Number(get('max_items') ?? 30);
-  if (!Number.isInteger(maxItems) || maxItems < 1 || maxItems > 50) return { ok: false, message: 'Ads per scan must be between 1 and 50.' };
+  if (!Number.isInteger(maxItems) || maxItems < 1 || maxItems > MAX_SCAN_ADS) return { ok: false, message: `Ads per scan must be between 1 and ${MAX_SCAN_ADS}.` };
   const period = Number(get('period_days') ?? 30);
   if (!(PERIODS as readonly number[]).includes(period)) return { ok: false, message: 'Pick a period: 7, 30 or 180 days.' };
 

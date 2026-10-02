@@ -26,11 +26,12 @@ export function TopAds({
   const { rank } = axesFor(source);
   return (
     <div className="panel min-w-0 p-3 lg:col-span-2 xl:col-span-1">
-      <div className="mb-2.5 flex items-baseline justify-between px-0.5">
+      <div className="mb-4 flex items-baseline justify-between px-0.5">
         <p className="mono text-faint">Top {source === 'tiktok_organic' ? 'posts' : 'ads'}</p>
         <p className="mono text-faint">by {rank === 'ctr' ? 'CTR' : 'views'}</p>
       </div>
-      <ol className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 xl:mx-0 xl:grid xl:max-h-[560px] xl:grid-cols-3 xl:overflow-y-auto xl:overflow-x-visible xl:px-0">
+      {/* Padding inside the scroll area so the selection ring is never clipped. */}
+      <ol className="no-scrollbar -m-1.5 flex gap-2 overflow-x-auto p-1.5 xl:grid xl:max-h-[572px] xl:grid-cols-3 xl:overflow-y-auto">
         {ads.map((ad, i) => {
           const selected = ad.id === selectedId;
           const value = ad.metrics[rank];
@@ -66,7 +67,7 @@ export function TopAds({
         })}
       </ol>
       {ads.length > SHOWN && (
-        <button type="button" className="chip mt-2 hidden w-full justify-center xl:flex" onClick={() => setAll((a) => !a)}>
+        <button type="button" className="chip mt-3.5 hidden w-full justify-center xl:flex" onClick={() => setAll((a) => !a)}>
           {all ? 'Show fewer' : `Show all ${ads.length}`}
         </button>
       )}

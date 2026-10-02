@@ -59,6 +59,20 @@ export function scanInput(board: Board): Raw {
 export const SCAN_RATES = { perRunUsd: 0.005, perResultUsd: 0.003 } as const;
 export const estimateScan = (ads: number) => SCAN_RATES.perRunUsd + SCAN_RATES.perResultUsd * ads;
 
+// Ads a board may fetch per scan (watchlists.max_items, checked in the database too).
+export const MAX_SCAN_ADS = 200;
+
+export type ScanBudget = { ok: true; estimate: number; chargeCap: number } | { ok: false; estimate: number; left: number };
+
+// Whether a scan of this many ads fits in what is left of the month. The
+// scraper may charge up to half again the estimate, never past the month.
+export function scanBudget(settings: { monthly_spend_cap_usd: number }, monthSpendUsd: number, ads: number): ScanBudget {
+  const left = Math.max(0, Number(settings.monthly_spend_cap_usd) - monthSpendUsd);
+  const estimate = estimateScan(ads);
+  if (estimate > left) return { ok: false, estimate, left };
+  return { ok: true, estimate, chargeCap: Math.floor(Math.min(left, estimate * 1.5) * 10000) / 10000 };
+}
+
 export type ScanMetric = { name: string; value: number | null; valueText?: string | null; unit: string | null };
 
 // One ad as a scan sees it, ready for items, board_items and metrics.

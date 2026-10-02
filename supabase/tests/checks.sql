@@ -229,9 +229,10 @@ do $$ declare board uuid; item uuid; spend_before numeric; begin
   select public.month_spend_usd() into spend_before;
   update public.items set decode_status = 'done', decoded_at = now(), decode_cost_usd = 0.0125 where id = item;
   if public.month_spend_usd() - spend_before <> 0.0125 then raise exception 'FAIL month spend leaves out decodes'; end if;
+  update public.watchlists set max_items = 200 where id = board;
   begin
-    update public.watchlists set max_items = 51 where id = board;
-    raise exception 'FAIL 51 ads per scan accepted';
+    update public.watchlists set max_items = 201 where id = board;
+    raise exception 'FAIL 201 ads per scan accepted';
   exception when check_violation then null; end;
   begin
     update public.watchlists set period_days = 14 where id = board;

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
+import { MAX_SCAN_ADS } from '@content-lab/core';
 import { CADENCES, parseWatchlistForm, PERIODS } from '@/lib/watchlists';
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; message: string };
@@ -33,7 +34,7 @@ export async function updateBoard(id: string, patch: { refresh_cadence?: string;
   const { refresh_cadence, max_items, period_days } = patch;
   const name = patch.name?.trim().slice(0, 80);
   if (refresh_cadence !== undefined && !(CADENCES as readonly string[]).includes(refresh_cadence)) return { ok: false, message: 'Unknown schedule.' };
-  if (max_items !== undefined && !(Number.isInteger(max_items) && max_items >= 1 && max_items <= 50)) return { ok: false, message: 'Ads per scan must be between 1 and 50.' };
+  if (max_items !== undefined && !(Number.isInteger(max_items) && max_items >= 1 && max_items <= MAX_SCAN_ADS)) return { ok: false, message: `Ads per scan must be between 1 and ${MAX_SCAN_ADS}.` };
   if (period_days !== undefined && !(PERIODS as readonly number[]).includes(period_days)) return { ok: false, message: 'Pick 7, 30 or 180 days.' };
   if (patch.name !== undefined && !name) return { ok: false, message: 'Give the board a name.' };
   const { error } = await supabase.from('watchlists').update({ refresh_cadence, max_items, period_days, name }).eq('id', id);
