@@ -2,10 +2,10 @@
 // caps a stuck run at about one compute unit.
 const RUN_OPTIONS = 'memory=1024&timeout=3600';
 
-// Starts the worker actor for a run. The actor reads the run from Supabase,
-// so its only input is the run id.
+// Starts the worker actor. Input is { runId } or { mode: 'sweep' }, plus the
+// dashboard's settings for the worker (see workerInput in lib/env.ts).
 export async function startWorkerActor(
-  runId: string,
+  input: Record<string, unknown>,
   env: { token: string; workerActorId: string },
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ ok: true; workerRunId: string } | { ok: false; message: string }> {
@@ -14,7 +14,7 @@ export async function startWorkerActor(
     const res = await fetchImpl(`https://api.apify.com/v2/acts/${actor}/runs?${RUN_OPTIONS}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${env.token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ runId }),
+      body: JSON.stringify(input),
       signal: AbortSignal.timeout(20000),
     });
     if (!res.ok) {

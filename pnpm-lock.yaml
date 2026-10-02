@@ -81,6 +81,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@apify/input_secrets':
+        specifier: ^2.0.5
+        version: 2.0.5
       '@content-lab/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -137,6 +140,26 @@ packages:
     peerDependenciesMeta:
       zod:
         optional: true
+
+  '@apify/consts@3.0.1':
+    resolution: {integrity: sha512-ZPmfdb4qt143R+6/jFYVCQDoHGInl24Ntz8ltEAMW7tFHSdiXnQoZtDgydZYT06vw6gOtPa/jEXgSneq8FM+uA==}
+    engines: {node: '>=22'}
+
+  '@apify/input_secrets@2.0.5':
+    resolution: {integrity: sha512-mYLu9jbiMTStcnQ+nFuGyTm3hsgcrmwelGvdGQ8w2DsMzOb8c21sUrgGYhvA5gr/yswfsIMjzkU5jSNLrk73Iw==}
+    engines: {node: '>=22'}
+
+  '@apify/log@3.0.1':
+    resolution: {integrity: sha512-lZbSxqW78S5TqEtDrE9o71MtqUnpQJ96FYaEMk2RtiAPH+/ZEAf76DUaFKP5my9KxozohyQLmmg1isbySXXu0A==}
+    engines: {node: '>=22'}
+
+  '@apify/utilities@3.1.0':
+    resolution: {integrity: sha512-x/Nvq3obzGcQyReYQ5thS0/dPfgdDXtkB2qvZAji1bB0mb7p1IOr1nzqwoZm4wkao3LG69XS9GMpTN/4nKC+5g==}
+    engines: {node: '>=22'}
+
+  '@apify/validations@1.1.1':
+    resolution: {integrity: sha512-TMp7jnxDEdcuKspiCc6mhQBqS3z94VBM7MMuoxeQjvKy1fFJYP7YqOPOnci2aMv4jgwWO60vaziubYmnzmtHRA==}
+    engines: {node: '>=22'}
 
   '@babel/runtime@7.29.7':
     resolution: {integrity: sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw==}
@@ -937,6 +960,10 @@ packages:
   '@vitest/spy@5.0.3':
     resolution: {integrity: sha512-XhFysQTB8AZ+P4gMi+Lpo99vg2AZi0qKpaB9yXQl37+CaMEAPO3iH/wGVnSyL5MPERiLezpqTVtrR6UZH5GCXg==}
 
+  ansi-colors@4.1.3:
+    resolution: {integrity: sha512-/6w/C21Pm1A7aZitlI5Ni/2J6FFQN8i1Cvz3kHABAAbw93v/NlvKdVOqz7CCWz/3iv/JplRSEEZ83XION15ovw==}
+    engines: {node: '>=6'}
+
   assertion-error@2.0.1:
     resolution: {integrity: sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA==}
     engines: {node: '>=12'}
@@ -1548,6 +1575,29 @@ snapshots:
     optionalDependencies:
       zod: 4.6.5
 
+  '@apify/consts@3.0.1': {}
+
+  '@apify/input_secrets@2.0.5':
+    dependencies:
+      '@apify/log': 3.0.1
+      '@apify/utilities': 3.1.0
+      '@apify/validations': 1.1.1
+      zod: 4.6.5
+
+  '@apify/log@3.0.1':
+    dependencies:
+      '@apify/consts': 3.0.1
+      ansi-colors: 4.1.3
+
+  '@apify/utilities@3.1.0':
+    dependencies:
+      '@apify/consts': 3.0.1
+      '@apify/log': 3.0.1
+
+  '@apify/validations@1.1.1':
+    dependencies:
+      zod: 4.6.5
+
   '@babel/runtime@7.29.7': {}
 
   '@emnapi/runtime@1.11.3':
@@ -2070,6 +2120,8 @@ snapshots:
       vite: 8.3.2(@types/node@22.20.4)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)
 
   '@vitest/spy@5.0.3': {}
+
+  ansi-colors@4.1.3: {}
 
   assertion-error@2.0.1: {}
 

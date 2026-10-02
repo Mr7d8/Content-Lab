@@ -12,7 +12,7 @@ type Env = Record<string, string | undefined>;
 
 function required(env: Env, name: string): string {
   const value = env[name];
-  if (!value) throw new Error(`Missing ${name}. Run pnpm run doctor to check every key.`);
+  if (!value) throw new Error(`Missing ${name}. Set it in the dashboard's environment (Vercel), which passes it to the worker, or locally in .env (pnpm run doctor checks every key).`);
   return value;
 }
 

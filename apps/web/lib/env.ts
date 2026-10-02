@@ -1,3 +1,6 @@
+import 'server-only';
+import { workerInputFromEnv } from '@content-lab/core';
+
 // Public Supabase settings. Returns null when the dashboard is not configured yet,
 // so pages can show setup instructions instead of crashing.
 export function supabaseEnv(): { url: string; anonKey: string } | null {
@@ -11,4 +14,10 @@ export function apifyEnv(): { token: string; workerActorId: string } | null {
   const token = process.env.APIFY_TOKEN;
   const workerActorId = process.env.APIFY_WORKER_ACTOR_ID;
   return token && workerActorId ? { token, workerActorId } : null;
+}
+
+// Keys and settings the worker receives in its input on every start, so they
+// only need to be set here (Vercel). The secret ones arrive encrypted.
+export function workerInput(): Record<string, string> {
+  return workerInputFromEnv(process.env);
 }

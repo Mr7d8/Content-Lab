@@ -12,7 +12,7 @@ Approved and built on 2026-10-02. Setup steps are in [SETUP.md](SETUP.md#6-resea
 
 ## How a sweep works
 
-1. **Pick:** an Apify Schedule starts the worker once a day with `{ "mode": "sweep" }`. The worker lists active watchlists that are due: never swept, or swept more than 7 days ago (weekly) or 30 days ago (monthly). The most overdue go first.
+1. **Pick:** a Vercel Cron on the dashboard starts the worker once a day with `{ "mode": "sweep" }`. The worker lists active watchlists that are due: never swept, or swept more than 7 days ago (weekly) or 30 days ago (monthly). The most overdue go first.
 2. **Discover:** for each due watchlist the worker creates a run and asks the source for candidates:
    - Creative Center watchlists (`industry`, `advertiser`) use a Creative Center Top Ads actor: country, period (7 days for weekly, 30 for monthly), industry, objective, keyword for advertisers. Results carry CTR, likes, budget tier and the video.
    - Organic watchlists (`keyword`, `hashtag`, `account`) use `clockworks/tiktok-scraper`, which the pipeline already uses, without video download at this step.
@@ -75,7 +75,7 @@ Both caps live in the new `app_settings` row.
    - Run it with region Morocco, last 30 days and 5 results.
    - Send me the input JSON (Input tab, JSON view) and one result from the dataset (JSON).
    - It costs cents and answers the open question of whether Creative Center covers Morocco. If it does not, the Morocco sweeps move to organic keyword and hashtag watchlists.
-2. **After the build:** in Apify, create a Schedule (Schedules, Create) that runs the worker actor daily with input `{ "mode": "sweep" }` and a timeout of 3600 seconds. Also set the actor's default run timeout to 3600 in its Settings tab. I will put the exact steps in `docs/SETUP.md`.
+2. **After the build:** nothing in Apify. The daily sweep runs from a Vercel Cron on the dashboard, and the dashboard passes the worker its keys on every start, so they live only in Vercel (changed on 2026-10-02 from an Apify Schedule and actor variables).
 3. **The migration:** run it in the Supabase SQL editor, like the first two.
 
 ## Risks

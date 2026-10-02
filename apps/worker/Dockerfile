@@ -16,4 +16,4 @@ FROM apify/actor-node:22
 RUN apk add --no-cache ffmpeg
 WORKDIR /usr/src/app
 COPY --from=build /repo/apps/worker/dist ./dist
-CMD ["node", "--enable-source-maps", "dist/main.js"]
+CMD ["node", "--enable-source-maps", "dist/main.mjs"]

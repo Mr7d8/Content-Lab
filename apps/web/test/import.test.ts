@@ -41,19 +41,19 @@ describe('prepareLinks', () => {
 describe('startWorkerActor', () => {
   const env = { token: 'apify_api_test', workerActorId: 'me~content-lab-worker' };
 
-  it('starts the actor with the run id as input', async () => {
+  it('starts the actor with the given input', async () => {
     const fetchImpl = vi.fn(async () => Response.json({ data: { id: 'run123' } }));
-    const result = await startWorkerActor('abc', env, fetchImpl as unknown as typeof fetch);
+    const result = await startWorkerActor({ runId: 'abc', groqApiKey: 'gsk_x' }, env, fetchImpl as unknown as typeof fetch);
     expect(result).toEqual({ ok: true, workerRunId: 'run123' });
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('https://api.apify.com/v2/acts/me~content-lab-worker/runs?memory=1024&timeout=3600');
-    expect(JSON.parse(String(init.body))).toEqual({ runId: 'abc' });
+    expect(JSON.parse(String(init.body))).toEqual({ runId: 'abc', groqApiKey: 'gsk_x' });
   });
 
   it('explains auth and not-found failures', async () => {
     const unauthorized = vi.fn(async () => new Response('', { status: 401 }));
-    expect(await startWorkerActor('abc', env, unauthorized as unknown as typeof fetch)).toEqual({ ok: false, message: 'Apify did not start the worker (check APIFY_TOKEN)' });
+    expect(await startWorkerActor({ runId: 'abc' }, env, unauthorized as unknown as typeof fetch)).toEqual({ ok: false, message: 'Apify did not start the worker (check APIFY_TOKEN)' });
     const missing = vi.fn(async () => new Response('', { status: 404 }));
-    expect(await startWorkerActor('abc', env, missing as unknown as typeof fetch)).toMatchObject({ message: expect.stringContaining('APIFY_WORKER_ACTOR_ID') });
+    expect(await startWorkerActor({ runId: 'abc' }, env, missing as unknown as typeof fetch)).toMatchObject({ message: expect.stringContaining('APIFY_WORKER_ACTOR_ID') });
   });
 });

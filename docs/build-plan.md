@@ -75,7 +75,7 @@ Source values carry the channel as a prefix, so a future channel adds new values
   - Category sweeps in Creative Center for **Morocco**, **MENA** and **France**, each for App Install and Purchase objectives, refreshed monthly. MENA expands to its countries in `packages/core`.
   - Advertiser watchlists for the global e-commerce leaders **Temu**, **Shein** and **AliExpress** in any region, refreshed weekly, for best-in-class creative.
   - Regional competitors (Noon, Namshi, Jumia, Sephora and others) can be added as advertiser watchlists later from the Collect screen.
-- Scheduled refresh: weekly for competitor watchlists, monthly for the full category sweep. A daily Apify Schedule starts the worker in sweep mode, which runs the due watchlists under a monthly spend cap ($5 to start); see [research-mode.md](research-mode.md).
+- Scheduled refresh: weekly for competitor watchlists, monthly for the full category sweep. A daily Vercel Cron on the dashboard starts the worker in sweep mode, which runs the due watchlists under a monthly spend cap ($5 to start); see [research-mode.md](research-mode.md).
 
 **Watch-outs**
 

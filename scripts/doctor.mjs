@@ -47,16 +47,20 @@ check('NEXT_PUBLIC_SUPABASE_URL', Boolean(env('NEXT_PUBLIC_SUPABASE_URL', web)),
 check('NEXT_PUBLIC_SUPABASE_ANON_KEY', Boolean(env('NEXT_PUBLIC_SUPABASE_ANON_KEY', web)), 'Supabase > Project settings > API > anon / publishable key.');
 warn('APIFY_TOKEN (dashboard)', Boolean(env('APIFY_TOKEN', web)), 'Without it the dashboard cannot start the worker; runs wait for pnpm worker:dev.');
 warn('APIFY_WORKER_ACTOR_ID', Boolean(env('APIFY_WORKER_ACTOR_ID', web)), 'Set after pushing the worker actor, e.g. yourname~content-lab-worker.');
-if (env('SUPABASE_SERVICE_ROLE_KEY', web)) {
-  line('WARN', 'SUPABASE_SERVICE_ROLE_KEY in apps/web', 'The dashboard never needs it. Remove it so it cannot leak to the browser.');
-  warnings++;
+warn('CRON_SECRET', Boolean(env('CRON_SECRET', web)), 'Without it Vercel Cron cannot start the daily research sweep.');
+// The dashboard hands these to the worker on every start (Apify secret input).
+for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'GROQ_API_KEY', 'GEMINI_API_KEY', 'TYPESAFE_API_KEY']) {
+  warn(`${name} (passed to the worker)`, Boolean(env(name, web)), 'Set it in Vercel so the worker receives it, or on the Apify actor instead.');
+}
+for (const name of Object.keys(web).filter((k) => k.startsWith('NEXT_PUBLIC_') && /SERVICE_ROLE|SECRET|API_KEY|TOKEN/.test(k))) {
+  check(name, false, 'Secrets must not start with NEXT_PUBLIC_: that ships them to the browser.');
 }
 
-console.log('\nWorker (.env locally, Apify actor environment in production)');
+console.log('\nWorker (.env locally; on Apify the dashboard passes these)');
 check('SUPABASE_URL', Boolean(env('SUPABASE_URL')), 'Same Project URL as the dashboard.');
 check('SUPABASE_SERVICE_ROLE_KEY', Boolean(env('SUPABASE_SERVICE_ROLE_KEY')), 'Supabase > Project settings > API > service_role key. Worker only.');
 check('APIFY_TOKEN', Boolean(env('APIFY_TOKEN')), 'Apify > Settings > API & Integrations. Injected automatically on Apify.');
-warn('APIFY_CREATIVE_CENTER_ACTOR_ID', Boolean(env('APIFY_CREATIVE_CENTER_ACTOR_ID')), 'Creative Center links fail until an actor is picked and checked on one URL.');
+line('OK', 'APIFY_CREATIVE_CENTER_ACTOR_ID', env('APIFY_CREATIVE_CENTER_ACTOR_ID') ? '' : 'not set, using fetch_cat~tiktok-ads-library-scraper');
 check('GROQ_API_KEY', Boolean(env('GROQ_API_KEY')), 'console.groq.com > API Keys (free tier).');
 const vision = (env('VISION_PROVIDER') || 'gemini').toLowerCase();
 const brief = (env('BRIEF_PROVIDER') || 'gemini').toLowerCase();

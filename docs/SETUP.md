@@ -58,25 +58,27 @@ The worker is an Apify actor in `apps/worker`. Its `.actor/actor.json` builds fr
    ```
    https://github.com/Mr7d8/Content-Lab.git#main:apps/worker
    ```
-3. In the actor's settings, add environment variables (mark keys as secret): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `TYPESAFE_API_KEY`, and optionally `GEMINI_MODEL`, `JEV_MODEL`, `VISION_PROVIDER`, `APIFY_CREATIVE_CENTER_ACTOR_ID` (default `fetch_cat~tiktok-ads-library-scraper`), `GROQ_REQUESTS_PER_MINUTE`, `GEMINI_REQUESTS_PER_MINUTE`. Apify injects `APIFY_TOKEN` itself. Each build keeps the variables set when it ran, so build again after changing them.
-4. In the actor's **Settings**, set the default run **Timeout** to 3600 seconds (new actors default to 300, too short for a run).
-5. Put the actor id (shown in the console URL, or `yourname~content-lab-worker`) in the dashboard's `APIFY_WORKER_ACTOR_ID`.
-6. After code changes land on `main`, click **Build** on the actor so it runs the new code.
+3. Nothing to configure on the actor: every key lives in Vercel (section 5), and the dashboard passes them in the actor input each time it starts the worker. The keys go in fields marked secret in `.actor/input_schema.json`, which Apify stores encrypted; the worker decrypts them on start. The dashboard also sets each run's memory and timeout. (Variables set on the actor itself still work, as a fallback; the dashboard's values win.)
+4. Put the actor id (shown in the console URL, or `yourname~content-lab-worker`) in the dashboard's `APIFY_WORKER_ACTOR_ID`.
+5. After code changes land on `main`, click **Build** on the actor so it runs the new code.
 
 Locally, the same code runs with `pnpm worker:dev --run <run id>` or `pnpm worker:dev --sweep` (needs FFmpeg).
 
 ## 5. Dashboard on Vercel
 
-Create a Vercel project from this repository with the root directory `apps/web` (framework: Next.js). Add `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `APIFY_TOKEN` and `APIFY_WORKER_ACTOR_ID`, and optionally `NEXT_PUBLIC_SITE_URL` for magic link redirects. Locally: `pnpm dev`.
+Create a Vercel project from this repository with the root directory `apps/web` (framework: Next.js). Add:
+
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `APIFY_TOKEN`, `APIFY_WORKER_ACTOR_ID`
+- the worker's keys, passed on to it: `SUPABASE_SERVICE_ROLE_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `TYPESAFE_API_KEY`, and optionally `ANTHROPIC_API_KEY`, `VISION_PROVIDER`, `GEMINI_MODEL`, `JEV_MODEL`, `APIFY_CREATIVE_CENTER_ACTOR_ID` (default `fetch_cat~tiktok-ads-library-scraper`). They stay server-side: never prefix them with `NEXT_PUBLIC_`.
+- `CRON_SECRET`: any long random string; Vercel Cron sends it to the daily sweep route.
+- optionally `NEXT_PUBLIC_SITE_URL` for magic link redirects.
+
+Vercel only applies new variables to new deployments, so redeploy after changing them. Locally: `pnpm dev`.
 
 ## 6. Research mode (daily sweep)
 
-Watchlists refresh on their own through one Apify Schedule that starts the worker in sweep mode. See [research-mode.md](research-mode.md) for how a sweep picks ads.
-
-1. In the Apify console, open **Schedules**, then **Create new**.
-2. Cron: `0 6 * * *`, time zone **Africa/Casablanca** (every day at 06:00).
-3. **Add** an actor: pick the worker actor, set the input to `{ "mode": "sweep" }`, and under run options set the timeout to 3600 seconds.
-4. Save and make sure the schedule is enabled.
+Watchlists refresh on their own: `apps/web/vercel.json` declares a Vercel Cron that calls `/api/cron/sweep` every day at 05:00 UTC (06:00 in Morocco). The route checks `CRON_SECRET` and starts the worker with `{ "mode": "sweep" }` and the dashboard's keys. Nothing to set up in Apify. See [research-mode.md](research-mode.md) for how a sweep picks ads.
 
 Each day the sweep runs the watchlists that are due (weekly or monthly, most overdue first), keeps the best new ads of each and processes them. It stops when this month's spend reaches the cap on **Collect** ($5 by default), after about 40 minutes (the rest wait for the next day), or when the daily sweep is switched off there. **Research now** on Collect runs one watchlist immediately under the same caps.
 

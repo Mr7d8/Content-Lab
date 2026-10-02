@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 
 await build({
   entryPoints: ['src/main.ts'],
-  outfile: 'dist/main.js',
+  outfile: 'dist/main.mjs',
   bundle: true,
   platform: 'node',
   target: 'node22',
@@ -12,4 +12,4 @@ await build({
   sourcemap: true,
   banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
 });
-console.log('Built dist/main.js');
+console.log('Built dist/main.mjs');

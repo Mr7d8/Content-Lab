@@ -12,10 +12,81 @@
     "mode": {
       "title": "Mode",
       "type": "string",
-      "description": "Set to sweep in the daily Apify Schedule: runs every watchlist that is due, under the monthly spend cap.",
+      "description": "sweep runs every watchlist that is due, under the monthly spend cap. The dashboard's daily cron sets it.",
       "editor": "select",
-      "enum": ["sweep"],
-      "enumTitles": ["Sweep due watchlists"]
+      "enum": [
+        "sweep"
+      ],
+      "enumTitles": [
+        "Sweep due watchlists"
+      ]
+    },
+    "supabaseUrl": {
+      "title": "Supabase URL",
+      "type": "string",
+      "description": "Passed by the dashboard from its environment (Vercel) on every start; leave empty here.",
+      "editor": "textfield",
+      "sectionCaption": "Settings from the dashboard",
+      "sectionDescription": "Filled in automatically when the dashboard starts the worker."
+    },
+    "supabaseServiceRoleKey": {
+      "title": "Supabase service role key",
+      "type": "string",
+      "description": "Passed by the dashboard from its environment (Vercel) on every start; leave empty here. Stored encrypted.",
+      "editor": "textfield",
+      "isSecret": true
+    },
+    "groqApiKey": {
+      "title": "Groq API key",
+      "type": "string",
+      "description": "Passed by the dashboard from its environment (Vercel) on every start; leave empty here. Stored encrypted.",
+      "editor": "textfield",
+      "isSecret": true
+    },
+    "geminiApiKey": {
+      "title": "Gemini API key",
+      "type": "string",
+      "description": "Passed by the dashboard from its environment (Vercel) on every start; leave empty here. Stored encrypted.",
+      "editor": "textfield",
+      "isSecret": true
+    },
+    "typesafeApiKey": {
+      "title": "TypeSafe API key",
+      "type": "string",
+      "description": "Passed by the dashboard from its environment (Vercel) on every start; leave empty here. Stored encrypted.",
+      "editor": "textfield",
+      "isSecret": true
+    },
+    "anthropicApiKey": {
+      "title": "Anthropic API key",
+      "type": "string",
+      "description": "Passed by the dashboard from its environment (Vercel) on every start; leave empty here. Stored encrypted.",
+      "editor": "textfield",
+      "isSecret": true
+    },
+    "visionProvider": {
+      "title": "Vision provider",
+      "type": "string",
+      "description": "Passed by the dashboard from its environment (Vercel) on every start; leave empty here.",
+      "editor": "textfield"
+    },
+    "geminiModel": {
+      "title": "Gemini model",
+      "type": "string",
+      "description": "Passed by the dashboard from its environment (Vercel) on every start; leave empty here.",
+      "editor": "textfield"
+    },
+    "jevModel": {
+      "title": "Jev model",
+      "type": "string",
+      "description": "Passed by the dashboard from its environment (Vercel) on every start; leave empty here.",
+      "editor": "textfield"
+    },
+    "creativeCenterActorId": {
+      "title": "Creative Center actor",
+      "type": "string",
+      "description": "Passed by the dashboard from its environment (Vercel) on every start; leave empty here.",
+      "editor": "textfield"
     }
   }
 }
