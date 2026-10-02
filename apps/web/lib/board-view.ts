@@ -1,0 +1,251 @@
+import { labelText, REGION_NAMES, scannedAd, scanVideoUrl, sourceLabel, type Breakdown, type Tables } from '@content-lab/core';
+
+// Everything the board shows, computed from database rows. Pure, so the
+// server loader and the tests share it.
+
+export type AdMetrics = { ctr?: number; likes?: number; views?: number; shares?: number; comments?: number; costIndex?: number };
+
+export type AdLabels = { format: string | null; hookType: string | null; structure: string | null; objective: string | null; language: string | null };
+
+export type BoardAd = {
+  id: string;
+  source: string;
+  externalId: string;
+  sourceUrl: string;
+  rank: number | null;
+  advertiser: string | null;
+  handle: string | null;
+  caption: string | null;
+  region: string | null;
+  durationS: number | null;
+  cover: string | null;
+  video: string | null;
+  metrics: AdMetrics;
+  decode: { status: 'none' | 'running' | 'done' | 'failed'; error: string | null; at: string | null };
+  labels: AdLabels | null;
+  breakdown: Breakdown | null;
+  transcript: string | null;
+};
+
+type ItemRow = Tables<'items'>;
+type ClassRow = Pick<Tables<'classifications'>, 'item_id' | 'labels_json' | 'created_at'>;
+type MediaRow = Pick<Tables<'media'>, 'item_id' | 'breakdown_json' | 'transcript'>;
+
+const METRIC_KEYS: Record<string, keyof AdMetrics> = {
+  ctr: 'ctr', likes: 'likes', views: 'views', shares: 'shares', comments: 'comments', cost_index: 'costIndex',
+};
+
+// A decode still marked running after this long was cut off; offer it again.
+const STALE_DECODE_MS = 6 * 60_000;
+
+// Creative Center fills unknown advertisers with a placeholder.
+const who = (v: string | null | undefined): string | null => (v && v.trim() && !/^not mention(ed)?$/i.test(v.trim()) ? v.trim() : null);
+
+export function toBoardAd(item: ItemRow, rank: number | null, labels: ClassRow | null, media: MediaRow | null, now = new Date()): BoardAd {
+  const scan = item.scan_json && typeof item.scan_json === 'object' && !Array.isArray(item.scan_json) ? (item.scan_json as Record<string, unknown>) : null;
+  const scanned = scan ? scannedAd(item.source, scan) : null;
+  const metrics: AdMetrics = {};
+  for (const m of scanned?.metrics ?? []) {
+    const key = METRIC_KEYS[m.name];
+    if (key && m.value !== null) metrics[key] = m.value;
+  }
+  const l = (labels?.labels_json ?? null) as Record<string, unknown> | null;
+  const running = item.decode_status === 'running' || item.decode_status === 'queued';
+  // decoded_at is stamped when a decode starts, and again when it finishes.
+  const stale = running && (!item.decoded_at || now.getTime() - Date.parse(item.decoded_at) > STALE_DECODE_MS);
+  const status = item.decode_status === 'done' ? 'done' : item.decode_status === 'failed' || stale ? 'failed' : running ? 'running' : 'none';
+  return {
+    id: item.id,
+    source: item.source,
+    externalId: item.external_id,
+    sourceUrl: item.source_url,
+    rank,
+    advertiser: who(item.advertiser) ?? who(scanned?.advertiser),
+    handle: item.account_handle,
+    caption: scanned?.caption ?? null,
+    region: item.region,
+    durationS: item.duration_s !== null ? Number(item.duration_s) : (scanned?.durationS ?? null),
+    // The cached copy, else the source's link, which may have expired.
+    cover: item.thumbnail_url ?? scanned?.coverUrl ?? null,
+    video: scanVideoUrl(scan, now),
+    metrics,
+    decode: { status, error: status === 'failed' ? (item.decode_error ?? 'The decode stopped before it finished') : null, at: item.decoded_at },
+    labels: l ? {
+      format: (l.format as string | null) ?? null,
+      hookType: (l.hook_type as string | null) ?? null,
+      structure: (l.structure as string | null) ?? null,
+      objective: (l.objective as string | null) ?? null,
+      language: (l.language as string | null) ?? null,
+    } : null,
+    breakdown: (media?.breakdown_json as Breakdown | null) ?? null,
+    transcript: media?.transcript ?? null,
+  };
+}
+
+// Which numbers the board plots and ranks by. Creative Center gives a CTR
+// score and likes; organic posts give views and likes. Never mixed.
+export type Axes = { x: 'likes' | 'views'; y: 'ctr' | 'likes'; yLog: boolean; rank: 'ctr' | 'views' };
+export const axesFor = (source: string): Axes =>
+  source === 'tiktok_organic' ? { x: 'views', y: 'likes', yLog: true, rank: 'views' } : { x: 'likes', y: 'ctr', yLog: false, rank: 'ctr' };
+
+export function rankAds(ads: BoardAd[], source: string): BoardAd[] {
+  const { rank } = axesFor(source);
+  return [...ads].sort((a, b) => (b.metrics[rank] ?? -1) - (a.metrics[rank] ?? -1) || (b.metrics.likes ?? -1) - (a.metrics.likes ?? -1));
+}
+
+export function median(values: number[]): number | null {
+  const v = values.filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
+  if (!v.length) return null;
+  const mid = Math.floor(v.length / 2);
+  return v.length % 2 ? (v[mid] as number) : ((v[mid - 1] as number) + (v[mid] as number)) / 2;
+}
+
+export function boardStats(ads: BoardAd[], source: string) {
+  const { rank } = axesFor(source);
+  const decoded = ads.filter((a) => a.decode.status === 'done');
+  const formats = new Set(decoded.map((a) => a.labels?.format).filter(Boolean));
+  const who = new Set(ads.map((a) => a.advertiser ?? a.handle).filter(Boolean));
+  return {
+    ads: ads.length,
+    decoded: decoded.length,
+    formats: formats.size,
+    advertisers: who.size,
+    medianRank: median(ads.map((a) => a.metrics[rank]).filter((v): v is number => v !== undefined)),
+    medianLikes: median(ads.map((a) => a.metrics.likes).filter((v): v is number => v !== undefined)),
+  };
+}
+
+export type GroupKey = 'format' | 'hook' | 'advertiser' | 'length';
+export type Group = { key: string; label: string; count: number; median: number | null; top: BoardAd[] };
+
+export function lengthBucket(durationS: number | null): string | null {
+  if (durationS === null) return null;
+  if (durationS < 10) return 'Under 10 s';
+  if (durationS < 20) return '10 to 20 s';
+  if (durationS < 40) return '20 to 40 s';
+  return '40 s or more';
+}
+
+const groupValue = (ad: BoardAd, by: GroupKey): string | null => {
+  if (by === 'format') return ad.labels?.format ?? null;
+  if (by === 'hook') return ad.labels?.hookType ?? null;
+  if (by === 'advertiser') return ad.advertiser ?? ad.handle ?? null;
+  return lengthBucket(ad.durationS);
+};
+
+// "Which formats win?": the median ranking metric per group, best first, with
+// each group's three strongest ads. Format and hook only count decoded ads.
+export function groupAds(ads: BoardAd[], source: string, by: GroupKey): Group[] {
+  const { rank } = axesFor(source);
+  const groups = new Map<string, BoardAd[]>();
+  for (const ad of ads) {
+    const value = groupValue(ad, by);
+    if (!value) continue;
+    groups.set(value, [...(groups.get(value) ?? []), ad]);
+  }
+  return [...groups.entries()]
+    .map(([key, list]) => ({
+      key,
+      label: by === 'format' || by === 'hook' ? labelText(key) : key,
+      count: list.length,
+      median: median(list.map((a) => a.metrics[rank]).filter((v): v is number => v !== undefined)),
+      top: rankAds(list, source).slice(0, 3),
+    }))
+    .sort((a, b) => (b.median ?? -1) - (a.median ?? -1) || b.count - a.count);
+}
+
+export function formatCount(n: number | null | undefined): string {
+  if (n === null || n === undefined) return '–';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}k`;
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
+const SEARCH_WORD: Record<string, string> = { advertiser: 'Advertiser', keyword: 'Keyword', hashtag: 'Hashtag', account: 'Account' };
+
+// The micro label over the board title: where the ads come from.
+export function boardEyebrow(board: Pick<Tables<'watchlists'>, 'source' | 'type' | 'value' | 'region' | 'objective' | 'period_days'>): string[] {
+  const parts = [sourceLabel(board.source)];
+  if (board.type !== 'industry') {
+    const shown = board.type === 'hashtag' ? `#${board.value}` : board.type === 'account' ? `@${board.value}` : board.value;
+    parts.push(`${SEARCH_WORD[board.type] ?? labelText(board.type)} ${shown}`);
+  }
+  parts.push(board.region ? (REGION_NAMES[board.region] ?? board.region) : 'Any region');
+  if (board.objective) parts.push(labelText(board.objective));
+  if (board.source === 'tiktok_creative_center') parts.push(`Last ${board.period_days} days`);
+  return parts;
+}
+
+// One sentence under the title that says what the board shows so far.
+export function boardHeadline(ads: BoardAd[], source: string): string {
+  if (!ads.length) return 'No ads yet. Scan the board to pull the top ads; it takes about a minute.';
+  const stats = boardStats(ads, source);
+  const what = source === 'tiktok_organic' ? 'top posts' : 'top ads';
+  if (!stats.decoded) return `${ads.length} ${what}, ranked by ${axesFor(source).rank === 'ctr' ? 'CTR' : 'views'}. Decode any of them to see the hook, the script and why it works.`;
+  const best = groupAds(ads, source, 'format').find((g) => g.count >= 2) ?? null;
+  const lead = best
+    ? ` ${best.label} leads: median ${axesFor(source).rank === 'ctr' ? 'CTR' : 'views'} ${formatCount(best.median)} over ${best.count} ads.`
+    : '';
+  return `${stats.decoded} of ${ads.length} ${what} decoded.${lead}`;
+}
+
+// "12 min ago", "3 h ago", "2 days ago".
+export function agoText(iso: string | null, now: Date): string | null {
+  if (!iso) return null;
+  const min = Math.max(0, Math.round((now.getTime() - Date.parse(iso)) / 60_000));
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min} min ago`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.round(h / 24);
+  return d === 1 ? 'yesterday' : `${d} days ago`;
+}
+
+export type Placed = { id: string; x: number; y: number };
+
+// Nudges overlapping thumbnails apart so each stays clickable: boxes closer
+// than w by h push each other along the shorter overlap, never more than
+// maxShift from their true spot and never outside the bounds.
+export function spreadPoints(
+  points: Placed[],
+  w: number,
+  h: number,
+  bounds: { x0: number; x1: number; y0: number; y1: number },
+  maxShift = 14,
+  iterations = 40,
+): Placed[] {
+  const out = points.map((p) => ({ ...p }));
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+  for (let it = 0; it < iterations; it++) {
+    let moved = false;
+    for (let i = 0; i < out.length; i++) {
+      for (let j = i + 1; j < out.length; j++) {
+        const a = out[i] as Placed;
+        const b = out[j] as Placed;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const ox = w - Math.abs(dx);
+        const oy = h - Math.abs(dy);
+        if (ox <= 0 || oy <= 0) continue;
+        moved = true;
+        // Exact ties split by order so the result does not depend on chance.
+        if (ox < oy) {
+          const s = (ox / 2 + 0.25) * (dx >= 0 ? 1 : -1);
+          a.x -= s;
+          b.x += s;
+        } else {
+          const s = (oy / 2 + 0.25) * (dy >= 0 ? 1 : -1);
+          a.y -= s;
+          b.y += s;
+        }
+      }
+    }
+    out.forEach((p, k) => {
+      const home = points[k] as Placed;
+      p.x = clamp(clamp(p.x, home.x - maxShift, home.x + maxShift), bounds.x0, bounds.x1);
+      p.y = clamp(clamp(p.y, home.y - maxShift, home.y + maxShift), bounds.y0, bounds.y1);
+    });
+    if (!moved) break;
+  }
+  return out;
+}

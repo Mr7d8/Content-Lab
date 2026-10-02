@@ -35,6 +35,7 @@
   --color-red: var(--red);
   --color-fill: var(--fill);
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 html,
@@ -143,9 +144,79 @@ body {
   }
 }
 
-/* Replay clean view: hide app chrome for screen recording. */
-body[data-clean='true'] .app-nav {
-  display: none;
+@layer components {
+  /* Board micro labels: monospace, small caps feel. */
+  .mono {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .tile-dark {
+    background: linear-gradient(160deg, #1d1d1f 0%, #2c2c2e 100%);
+    color: #fff;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+  }
+  .segmented {
+    display: inline-flex;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 999px;
+    background: var(--fill);
+  }
+  .segmented > button {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: none;
+    background: transparent;
+    color: var(--sub);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .segmented > button[aria-pressed='true'],
+  .segmented > button[aria-selected='true'] {
+    background: var(--card-bg-solid);
+    color: var(--ink);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  }
+  .shimmer {
+    background: linear-gradient(90deg, rgba(120, 120, 128, 0.1) 0%, rgba(120, 120, 128, 0.22) 50%, rgba(120, 120, 128, 0.1) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+    border-radius: 8px;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.2s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

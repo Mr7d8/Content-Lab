@@ -1,0 +1,146 @@
+import type { Tables } from '@content-lab/core';
+import { describe, expect, it } from 'vitest';
+import {
+  agoText,
+  axesFor,
+  boardEyebrow,
+  boardHeadline,
+  boardStats,
+  formatCount,
+  groupAds,
+  lengthBucket,
+  rankAds,
+  spreadPoints,
+  toBoardAd,
+  type BoardAd,
+} from '../lib/board-view';
+
+const NOW = new Date('2026-10-02T12:00:00Z');
+
+function item(over: Partial<Tables<'items'>> = {}, scan: Record<string, unknown> = {}): Tables<'items'> {
+  return {
+    id: 'i1', source: 'tiktok_creative_center', source_url: 'https://ads.tiktok.com/business/creativecenter/topads/7681200654287634439/',
+    external_id: '7681200654287634439', advertiser: null, account_handle: null, region: 'MA', industry: null, objective_source: null,
+    posted_at: null, collected_at: NOW.toISOString(), duration_s: null, thumbnail_url: null, raw_json: {}, decode_status: null,
+    decode_error: null, decoded_at: null, decode_cost_usd: 0,
+    scan_json: { adId: '7681200654287634439', ctr: 0.94, likes: 3973, costIndex: 1, brandName: 'Noon', adText: 'Big sale', durationSeconds: 28.3, coverImageUrl: 'https://cdn/c.jpg', ...scan },
+    scanned_at: NOW.toISOString(),
+    ...over,
+  };
+}
+
+function ad(id: string, over: Partial<BoardAd> = {}): BoardAd {
+  return {
+    id, source: 'tiktok_creative_center', externalId: id, sourceUrl: '', rank: null, advertiser: null, handle: null, caption: null, region: null,
+    durationS: null, cover: null, video: null, metrics: {}, decode: { status: 'none', error: null, at: null }, labels: null, breakdown: null, transcript: null,
+    ...over,
+  };
+}
+
+const decoded = (format: string, ctr: number, id = `${format}-${ctr}`) =>
+  ad(id, { metrics: { ctr, likes: ctr * 1000 }, decode: { status: 'done', error: null, at: null }, labels: { format, hookType: 'question', structure: null, objective: null, language: null } });
+
+describe('toBoardAd', () => {
+  it('reads the scan row: metrics, advertiser, caption, length, cover fallback', () => {
+    const a = toBoardAd(item(), 2, null, null, NOW);
+    expect(a).toMatchObject({ rank: 2, advertiser: 'Noon', caption: 'Big sale', durationS: 28.3, cover: 'https://cdn/c.jpg', metrics: { ctr: 0.94, likes: 3973, costIndex: 1 } });
+    expect(a.decode.status).toBe('none');
+    expect(toBoardAd(item({ thumbnail_url: 'https://supa/covers/i1.jpg' }), 1, null, null, NOW).cover).toBe('https://supa/covers/i1.jpg');
+  });
+
+  it('drops the Not Mention placeholder for advertisers', () => {
+    expect(toBoardAd(item({ advertiser: 'Not Mention' }, { brandName: null, advertiserName: 'Not Mention' }), 1, null, null, NOW).advertiser).toBeNull();
+  });
+
+  it('only offers a video link that has not expired', () => {
+    const scan = { videoUrls: { '540p': 'https://v/540.mp4' } };
+    expect(toBoardAd(item({}, { ...scan, mediaExpiresAt: '2026-10-02T13:00:00Z' }), 1, null, null, NOW).video).toBe('https://v/540.mp4');
+    expect(toBoardAd(item({}, { ...scan, mediaExpiresAt: '2026-10-02T11:00:00Z' }), 1, null, null, NOW).video).toBeNull();
+  });
+
+  it('shows a decode cut off for over 6 minutes as failed, so it can be retried', () => {
+    const fresh = toBoardAd(item({ decode_status: 'running', decoded_at: '2026-10-02T11:58:00Z' }), 1, null, null, NOW);
+    expect(fresh.decode.status).toBe('running');
+    const stale = toBoardAd(item({ decode_status: 'running', decoded_at: '2026-10-02T11:40:00Z' }), 1, null, null, NOW);
+    expect(stale.decode).toMatchObject({ status: 'failed', error: expect.stringContaining('stopped') });
+  });
+
+  it('carries labels and the breakdown of a done decode', () => {
+    const a = toBoardAd(
+      item({ decode_status: 'done' }),
+      1,
+      { item_id: 'i1', labels_json: { format: 'demo', hook_type: 'question', structure: 'problem_solution', objective: 'purchase', language: 'ar' }, created_at: '' },
+      { item_id: 'i1', breakdown_json: { summary: 'S', product: null, hook: { text: 'H', visual: 'V' }, beats: [{ start: 0, end: 3, role: 'hook', summary: 'x' }], cta: null, offer: null, why_it_works: 'W' }, transcript: 'T' },
+      NOW,
+    );
+    expect(a.labels).toEqual({ format: 'demo', hookType: 'question', structure: 'problem_solution', objective: 'purchase', language: 'ar' });
+    expect(a.breakdown?.summary).toBe('S');
+    expect(a.transcript).toBe('T');
+  });
+});
+
+describe('ranking and stats', () => {
+  it('ranks Creative Center ads by CTR and organic posts by views', () => {
+    const ads = [ad('a', { metrics: { ctr: 0.5 } }), ad('b', { metrics: { ctr: 0.9 } }), ad('c', { metrics: {} })];
+    expect(rankAds(ads, 'tiktok_creative_center').map((a) => a.id)).toEqual(['b', 'a', 'c']);
+    expect(axesFor('tiktok_organic')).toMatchObject({ x: 'views', rank: 'views', yLog: true });
+  });
+
+  it('counts decoded ads, formats and advertisers, with medians', () => {
+    const stats = boardStats([decoded('demo', 0.9), decoded('ugc', 0.5), ad('x', { advertiser: 'Noon', metrics: { ctr: 0.7 } })], 'tiktok_creative_center');
+    expect(stats).toMatchObject({ ads: 3, decoded: 2, formats: 2, advertisers: 1, medianRank: 0.7 });
+  });
+
+  it('groups by format with the best median first and three top ads each', () => {
+    const groups = groupAds([decoded('ugc', 0.5), decoded('demo', 0.9), decoded('demo', 0.8), decoded('demo', 0.7), decoded('demo', 0.2), ad('none')], 'tiktok_creative_center', 'format');
+    expect(groups.map((g) => [g.key, g.count, g.median])).toEqual([['demo', 4, 0.75], ['ugc', 1, 0.5]]);
+    expect(groups[0]?.top.map((a) => a.metrics.ctr)).toEqual([0.9, 0.8, 0.7]);
+    expect(groups[0]?.label).toBe('Demo');
+  });
+
+  it('buckets lengths', () => {
+    expect([null, 5, 15, 30, 60].map(lengthBucket)).toEqual([null, 'Under 10 s', '10 to 20 s', '20 to 40 s', '40 s or more']);
+  });
+});
+
+describe('board text', () => {
+  it('builds the eyebrow from the search', () => {
+    expect(boardEyebrow({ source: 'tiktok_creative_center', type: 'industry', value: 'all', region: 'MA', objective: 'purchase', period_days: 30 }))
+      .toEqual(['Creative Center', 'Morocco', 'Purchase', 'Last 30 days']);
+    expect(boardEyebrow({ source: 'tiktok_organic', type: 'hashtag', value: 'tiktokmaroc', region: null, objective: null, period_days: 30 }))
+      .toEqual(['TikTok organic', 'Hashtag #tiktokmaroc', 'Any region']);
+  });
+
+  it('says what the board shows so far', () => {
+    expect(boardHeadline([], 'tiktok_creative_center')).toMatch(/^No ads yet/);
+    expect(boardHeadline([ad('a', { metrics: { ctr: 0.4 } })], 'tiktok_creative_center')).toMatch(/^1 top ads, ranked by CTR/);
+    expect(boardHeadline([decoded('demo', 0.9), decoded('demo', 0.7), decoded('ugc', 0.5)], 'tiktok_creative_center')).toBe('3 of 3 top ads decoded. Demo leads: median CTR 0.80 over 2 ads.');
+  });
+
+  it('formats counts and ages', () => {
+    expect([null, 7, 0.94, 1543, 69588, 540288, 12_400_000].map(formatCount)).toEqual(['–', '7', '0.94', '1.5k', '70k', '540k', '12M']);
+    expect(agoText(null, NOW)).toBeNull();
+    expect(agoText('2026-10-02T11:59:50Z', NOW)).toBe('just now');
+    expect(agoText('2026-10-02T11:48:00Z', NOW)).toBe('12 min ago');
+    expect(agoText('2026-10-02T09:00:00Z', NOW)).toBe('3 h ago');
+    expect(agoText('2026-10-01T10:00:00Z', NOW)).toBe('yesterday');
+    expect(agoText('2026-09-28T12:00:00Z', NOW)).toBe('4 days ago');
+  });
+});
+
+describe('spreadPoints', () => {
+  const bounds = { x0: 0, x1: 500, y0: 0, y1: 500 };
+
+  it('pushes overlapping thumbnails apart, within the shift cap', () => {
+    const out = spreadPoints([{ id: 'a', x: 100, y: 100 }, { id: 'b', x: 102, y: 100 }], 20, 40, bounds, 14);
+    const [a, b] = out;
+    expect(Math.abs((b?.x ?? 0) - (a?.x ?? 0))).toBeGreaterThanOrEqual(19);
+    expect(Math.abs((a?.x ?? 0) - 100)).toBeLessThanOrEqual(14);
+  });
+
+  it('leaves separate points and the bounds alone', () => {
+    expect(spreadPoints([{ id: 'a', x: 10, y: 10 }, { id: 'b', x: 300, y: 300 }], 20, 40, bounds)).toEqual([{ id: 'a', x: 10, y: 10 }, { id: 'b', x: 300, y: 300 }]);
+    const edge = spreadPoints([{ id: 'a', x: 0, y: 250 }, { id: 'b', x: 1, y: 250 }], 20, 40, bounds);
+    expect(edge.every((p) => p.x >= 0 && p.x <= 500)).toBe(true);
+  });
+});

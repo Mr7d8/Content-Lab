@@ -1,5 +1,4 @@
 import { redirect } from 'next/navigation';
-import { Nav } from '@/components/nav';
 import { SetupNotice } from '@/components/setup-notice';
 import { supabaseEnv } from '@/lib/env';
 import { createClient } from '@/lib/supabase/server';
@@ -53,10 +52,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     );
   }
 
-  return (
-    <>
-      <Nav email={email} />
-      <div className="mx-auto max-w-6xl px-4 pb-16 pt-6">{children}</div>
-    </>
-  );
+  // The board draws its own chrome.
+  return <>{children}</>;
 }

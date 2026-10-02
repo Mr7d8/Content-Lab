@@ -1,4 +1,4 @@
-import type { SCRIPT_ROLE } from '@content-lab/core';
+import type { BeatRole, SCRIPT_ROLE } from '@content-lab/core';
 
 // Categorical colors for script roles, kept apart from the state colors.
 export const ROLE_COLORS: Record<keyof typeof SCRIPT_ROLE, string> = {
@@ -9,3 +9,6 @@ export const ROLE_COLORS: Record<keyof typeof SCRIPT_ROLE, string> = {
   cta: '#bf5af2',
   other: '#c7c7cc',
 };
+
+// The same roles for decoded beats, plus proof (reviews, results, numbers).
+export const BEAT_COLORS: Record<BeatRole, string> = { ...ROLE_COLORS, proof: '#5e5ce6' };

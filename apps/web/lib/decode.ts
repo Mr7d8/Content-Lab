@@ -82,7 +82,8 @@ export async function decodeAd(admin: AdminClient, itemId: string): Promise<Deco
     return { ok: false, message: `This month's budget is used ($${Number(spend ?? 0).toFixed(2)} of $${Number(settings.monthly_spend_cap_usd).toFixed(2)}).` };
   }
 
-  await admin.from('items').update({ decode_status: 'running', decode_error: null }).eq('id', item.id);
+  // decoded_at marks the start too, so a cut-off decode shows as stale later.
+  await admin.from('items').update({ decode_status: 'running', decode_error: null, decoded_at: new Date().toISOString() }).eq('id', item.id);
   try {
     const ai = createAIProviders(process.env, ['decoder', 'classifier'] as const);
     const video = item.source === 'tiktok_creative_center' ? await creativeCenterVideo(admin, item) : await organicVideo(item);
