@@ -4,7 +4,7 @@ import { DECODE_ESTIMATE_USD } from '@content-lab/core';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BoardData } from '@/lib/board';
-import { boardHeadline, boardStats, byMarket, groupAds, marketCounts, rankAds, splitByScan, type BoardAd, type MarketFilter as Market } from '@/lib/board-view';
+import { boardHeadline, boardStats, byMarket, groupAds, marketCounts, rankAds, scanSummary, splitByScan, type BoardAd, type MarketFilter as Market } from '@/lib/board-view';
 import { DeepDive } from './deep-dive';
 import { Ambient } from './glass';
 import { BoardActions, Hero } from './hero';
@@ -122,6 +122,7 @@ export function Board({ data }: { data: BoardData }) {
           headline={boardHeadline(ads, source)}
           count={counts.all}
           scan={scan}
+          summary={scanSummary(data.scan)}
           top={ads.slice(0, 3)}
           onSelect={select}
           market={<MarketFilter value={market} counts={counts} onChange={setMarket} />}

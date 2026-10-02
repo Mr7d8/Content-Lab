@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { deleteBoard, updateBoard } from '@/app/(app)/b/actions';
 import { motion } from 'motion/react';
-import { agoText, axesFor, boardEyebrow, formatCount, type BoardAd } from '@/lib/board-view';
+import { agoText, axesFor, boardEyebrow, formatCount, scanProgress, type BoardAd, type ScanSummary } from '@/lib/board-view';
 import { Cover } from './cover';
 import { Glow } from './glass';
 import { ADS_PER_SCAN, CADENCES, PERIODS, scheduleText } from '@/lib/watchlists';
@@ -92,14 +92,20 @@ function BoardMenu({ board }: { board: Tables<'watchlists'> }) {
   );
 }
 
-function ScanLine({ board, scan, count }: { board: Tables<'watchlists'>; scan: ScanView; count: number }) {
+function ScanLine({ board, scan, count, summary }: { board: Tables<'watchlists'>; scan: ScanView; count: number; summary: ScanSummary | null }) {
   const now = new Date();
   if (scan.phase === 'starting' || scan.phase === 'running') {
+    const { done, target } = scanProgress(scan.synced, scan.requested, board.max_items);
     return (
-      <p className="mono flex items-center gap-2 text-accent" role="status">
-        <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-accent" />
-        {scan.phase === 'starting' ? 'Starting the scan' : `Scanning · ${scan.synced} ads in`}
-      </p>
+      <div className="flex items-center gap-2.5" role="status">
+        <p className="mono flex items-center gap-2 tabular-nums text-accent">
+          <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-accent" />
+          {scan.phase === 'starting' ? 'Starting the scan' : 'Scanning'} · {done}/{target} ads in
+        </p>
+        <span className="h-1.5 w-24 overflow-hidden rounded-full bg-[var(--fill-strong)]" aria-hidden>
+          <span className="block h-full rounded-full bg-accent transition-[width] duration-500" style={{ width: `${(done / target) * 100}%` }} />
+        </span>
+      </div>
     );
   }
   if (scan.phase === 'failed' && scan.error) {
@@ -109,7 +115,14 @@ function ScanLine({ board, scan, count }: { board: Tables<'watchlists'>; scan: S
   return (
     // "3 min ago" depends on the clock, so server and browser may differ by a minute.
     <p className="mono text-faint" suppressHydrationWarning>
-      {last ? `Scanned ${last}` : 'Never scanned'} · {count} ads · {scheduleText(board, now)}
+      {last ? `Scanned ${last}` : 'Never scanned'}
+      {summary && <span className="tabular-nums"> · {summary.found}/{summary.requested} found</span>}
+      {summary && summary.skipped > 0 && (
+        <span className="tabular-nums" title="Rows the scan did not keep: ads run for another objective than this board's, or the same ad twice in the results.">
+          {' '}· {summary.skipped} skipped
+        </span>
+      )}
+      {' '}· {count} ads · {scheduleText(board, now)}
     </p>
   );
 }
@@ -170,13 +183,14 @@ export function BoardActions({
   onDecodeTop: () => void;
 }) {
   const scanning = scan.phase === 'starting' || scan.phase === 'running';
+  const progress = scanProgress(scan.synced, scan.requested, board.max_items);
   return (
     <div className="flex flex-wrap items-center gap-2">
       <button type="button" className="btn-primary !px-5 !py-2.5" onClick={onScan} disabled={scanning}>
         {scanning ? (
           <>
             <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-white" />
-            Scanning
+            Scanning <span className="tabular-nums opacity-70">{progress.done}/{progress.target}</span>
           </>
         ) : (
           <>
@@ -205,6 +219,7 @@ export function Hero({
   headline,
   count,
   scan,
+  summary,
   top,
   onSelect,
   market,
@@ -213,6 +228,8 @@ export function Hero({
   headline: string;
   count: number;
   scan: ScanView;
+  // What the latest finished scan found and left out.
+  summary: ScanSummary | null;
   top: BoardAd[];
   onSelect: (id: string) => void;
   // The market filter, shown on the scan line.
@@ -236,7 +253,7 @@ export function Hero({
         </h1>
         <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-sub">{headline}</p>
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2.5">
-          <ScanLine board={board} scan={scan} count={count} />
+          <ScanLine board={board} scan={scan} count={count} summary={summary} />
           {market && (
             <>
               <span aria-hidden className="hidden h-4 w-px bg-[var(--fill-strong)] sm:block" />

@@ -6,7 +6,9 @@ import type { GateStatus } from './gate';
 
 export type BoardSummary = { id: string; name: string; source: string; ads: number; lastScan: string | null };
 
-export type ScanState = { id: string; status: string; synced: number; error: string | null; startedAt: string | null; finishedAt: string | null };
+// synced: the scraper's rows read, out of requested. kept: the ads on the
+// board seen by this scan; the other rows were left out on the way in.
+export type ScanState = { id: string; status: string; synced: number; requested: number; kept: number; error: string | null; startedAt: string | null; finishedAt: string | null };
 
 export type BoardData = {
   board: Tables<'watchlists'>;
@@ -42,7 +44,7 @@ export async function loadBoard(supabase: ServerClient, boardId: string): Promis
   const [{ data: board }, { data: members }, { data: scan }, { data: finished }, boards, { data: settings }, { data: spend }] = await Promise.all([
     supabase.from('watchlists').select('*').eq('id', boardId).maybeSingle(),
     supabase.from('board_items').select('rank, last_seen_at, status, item:items(*)').eq('watchlist_id', boardId),
-    supabase.from('runs').select('id, status, synced_count, error, started_at, finished_at')
+    supabase.from('runs').select('id, status, synced_count, items_requested, error, started_at, finished_at')
       .eq('watchlist_id', boardId).eq('kind', 'scan').order('created_at', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('runs').select('started_at')
       .eq('watchlist_id', boardId).eq('kind', 'scan').eq('status', 'completed').order('created_at', { ascending: false }).limit(1).maybeSingle(),
@@ -70,7 +72,11 @@ export async function loadBoard(supabase: ServerClient, boardId: string): Promis
     ads: rows.map(({ rank, seenAt, gate, item }) => ({ ...toBoardAd(item, rank, latestClass.get(item.id) ?? null, mediaById.get(item.id) ?? null, now), seenAt, gate })),
     cutoff: finished?.started_at ?? null,
     gate: { pending: rows.filter((r) => r.gate === 'pending').length, rejected: rows.filter((r) => r.gate === 'rejected').length },
-    scan: scan ? { id: scan.id, status: scan.status, synced: scan.synced_count, error: scan.error, startedAt: scan.started_at, finishedAt: scan.finished_at } : null,
+    scan: scan ? {
+      id: scan.id, status: scan.status, synced: scan.synced_count, requested: scan.items_requested,
+      kept: scan.started_at ? rows.filter((r) => Date.parse(r.seenAt) >= Date.parse(scan.started_at as string)).length : 0,
+      error: scan.error, startedAt: scan.started_at, finishedAt: scan.finished_at,
+    } : null,
     boards,
     spend: {
       month: Number(spend ?? 0),
