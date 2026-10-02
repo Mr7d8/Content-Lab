@@ -47,3 +47,19 @@ export const CREATIVE_CENTER_OBJECTIVE = {
   app_install: 'campaign_objective_app_installs',
   purchase: 'campaign_objective_conversion',
 } as const;
+
+// Creative Center objectives that count as each of ours. The scraper does not
+// always apply the objective filter (a Morocco purchase scan came back with
+// reach, video view, traffic and lead ads), so scans check each ad as well.
+const OBJECTIVE_MATCHES: Readonly<Record<string, RegExp>> = {
+  purchase: /^campaign_objective_(conversion|product_sales|shop_purchases?)$/,
+  app_install: /^campaign_objective_(app_installs?|app_promotion)$/,
+};
+
+// Whether an ad's Creative Center objective fits the board's. Ads with no
+// objective, and boards without one, always fit.
+export function fitsObjective(boardObjective: string | null, adObjective: string | null): boolean {
+  const pattern = boardObjective ? OBJECTIVE_MATCHES[boardObjective] : undefined;
+  if (!pattern || !adObjective) return true;
+  return pattern.test(adObjective);
+}

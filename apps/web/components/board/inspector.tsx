@@ -5,10 +5,11 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useRef, useState } from 'react';
 import { formatCount, type BoardAd } from '@/lib/board-view';
 import { BEAT_COLORS } from '@/lib/colors';
+import { clock, craftOf, frameRows } from '@/lib/frame-view';
 import { Cover } from './cover';
+import { CraftPanel, FrameByFrame } from './frames';
 import { Glow, ProgressiveBlur } from './glass';
-
-const secs = (s: number) => (s < 10 ? `0:0${Math.floor(s)}` : s < 60 ? `0:${Math.floor(s)}` : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`);
+import { useAdDetail } from './use-ad-detail';
 
 const Sparkle = ({ size = 14 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 14 14" aria-hidden><path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7 5.6 5.6Z" fill="currentColor" /></svg>
@@ -189,7 +190,7 @@ function Beats({ ad, onSeek }: { ad: BoardAd; onSeek: (s: number) => void }) {
     <div className="space-y-2.5">
       <div className="flex items-baseline justify-between">
         <p className="mono text-faint">Script beats</p>
-        <p className="mono text-faint">{secs(total)}</p>
+        <p className="mono text-faint">{clock(total)}</p>
       </div>
       <div className="flex h-2.5 gap-[2px] overflow-hidden rounded-full" role="img" aria-label={`Beats: ${beats.map((b) => b.role).join(', ')}`}>
         {beats.map((b, i) => (
@@ -208,7 +209,7 @@ function Beats({ ad, onSeek }: { ad: BoardAd; onSeek: (s: number) => void }) {
         {beats.map((b, i) => (
           <li key={i}>
             <button type="button" onClick={() => onSeek(b.start)} className="group flex w-full gap-3 rounded-[12px] px-2 py-1.5 text-left transition-colors hover:bg-white/70">
-              <span className="mono w-9 shrink-0 pt-0.5 tabular-nums text-faint group-hover:text-accent">{secs(b.start)}</span>
+              <span className="mono w-9 shrink-0 pt-0.5 tabular-nums text-faint group-hover:text-accent">{clock(b.start)}</span>
               <span className="min-w-0 text-[13px] leading-snug">
                 <span className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle" style={{ background: BEAT_COLORS[b.role as BeatRole] ?? BEAT_COLORS.other }} />
                 <span className="font-medium">{labelText(b.role)}.</span> <span className="text-sub" dir="auto">{b.summary}</span>
@@ -277,6 +278,7 @@ function Decoded({ ad, onSeek }: { ad: BoardAd; onSeek: (s: number) => void }) {
 
 export function Inspector({ ad, rank, total, source, onDecode }: { ad: BoardAd | null; rank: number; total: number; source: string; onDecode: (id: string) => void }) {
   const video = useRef<HTMLVideoElement | null>(null);
+  const { detail, loading, capture } = useAdDetail(ad);
   if (!ad) {
     return (
       <aside className="panel grid min-h-[300px] place-items-center p-6 text-center">
@@ -290,6 +292,10 @@ export function Inspector({ ad, rank, total, source, onDecode }: { ad: BoardAd |
     v.currentTime = s;
     void v.play().catch(() => undefined);
   };
+  const rows = detail
+    ? frameRows(detail.frames, { segments: detail.segments, beats: ad.breakdown?.beats, durationS: ad.durationS, images: detail.images })
+    : [];
+  const craft = detail?.record ? craftOf(detail.record) : null;
 
   return (
     <aside aria-label="Inspector" className="no-scrollbar min-w-0 lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto">
@@ -302,7 +308,7 @@ export function Inspector({ ad, rank, total, source, onDecode }: { ad: BoardAd |
               <div className="space-y-1.5">
                 <p className="mono text-faint">Not decoded yet</p>
                 <p className="text-[13px] leading-snug text-sub">
-                  One pass over the video: the hook, each script beat, the offer and why it works. About ${DECODE_ESTIMATE_USD.toFixed(2)} and half a minute.
+                  One pass over the video: the hook, each script beat, the offer, why it works and a frame by frame breakdown. About ${DECODE_ESTIMATE_USD.toFixed(2)} and half a minute.
                 </p>
               </div>
             )}
@@ -326,6 +332,31 @@ export function Inspector({ ad, rank, total, source, onDecode }: { ad: BoardAd |
             )}
             {ad.decode.status === 'done' && <Decoded ad={ad} onSeek={seek} />}
           </div>
+
+          {rows.length > 0 && (
+            <div className="panel p-4">
+              <FrameByFrame adId={ad.id} rows={rows} video={video} capture={capture} capturable={detail?.capturable ?? false} onSeek={seek} />
+            </div>
+          )}
+          {loading && ad.decode.status === 'done' && (
+            <div className="panel space-y-2.5 p-4" role="status" aria-label="Loading the frames">
+              <div className="shimmer h-3 w-1/3" />
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="grid grid-cols-[72px_minmax(0,1fr)] gap-3">
+                  <div className="shimmer aspect-[9/16]" />
+                  <div className="space-y-2 pt-1">
+                    <div className="shimmer h-3.5 w-11/12" />
+                    <div className="shimmer h-3.5 w-2/3" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {craft && (
+            <div className="panel p-4">
+              <CraftPanel craft={craft} onSeek={seek} />
+            </div>
+          )}
         </motion.div>
       </AnimatePresence>
     </aside>

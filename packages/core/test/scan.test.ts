@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { creativeCenterAd, creativeCenterScanInput, estimateScan, organicAd, organicScanInput, scanVideoUrl } from '../src/scan';
+import { fitsObjective } from '../src/sources';
 
 // Shape of a real fetch_cat/tiktok-ads-library-scraper row (2026-10-02 scan).
 const ccRow = {
@@ -61,5 +62,19 @@ describe('scanned ads', () => {
     expect(scanVideoUrl(ccRow, new Date('2026-10-02T12:00:00Z'))).toBe('https://cdn.test/540.mp4');
     expect(scanVideoUrl(ccRow, new Date('2026-10-02T16:31:00Z'))).toBeNull();
     expect(scanVideoUrl(null)).toBeNull();
+  });
+});
+
+describe('fitsObjective', () => {
+  it('matches Creative Center objectives to the board objective, and lets unknowns through', () => {
+    expect(fitsObjective('purchase', 'campaign_objective_conversion')).toBe(true);
+    expect(fitsObjective('purchase', 'campaign_objective_product_sales')).toBe(true);
+    expect(fitsObjective('purchase', 'campaign_objective_reach')).toBe(false);
+    expect(fitsObjective('purchase', 'campaign_objective_lead_generation')).toBe(false);
+    expect(fitsObjective('app_install', 'campaign_objective_app_installs')).toBe(true);
+    expect(fitsObjective('app_install', 'campaign_objective_conversion')).toBe(false);
+    expect(fitsObjective('purchase', null)).toBe(true);
+    expect(fitsObjective(null, 'campaign_objective_reach')).toBe(true);
+    expect(fitsObjective('brand', 'campaign_objective_reach')).toBe(true);
   });
 });

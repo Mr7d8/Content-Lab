@@ -1,23 +1,31 @@
-import { scannedAd, type Json, type ScannedAd, type Tables, type TablesInsert } from '@content-lab/core';
+import { fitsObjective, scannedAd, type Json, type ScannedAd, type Tables, type TablesInsert } from '@content-lab/core';
 
-type Board = Pick<Tables<'watchlists'>, 'id' | 'type' | 'value' | 'source'>;
+type Board = Pick<Tables<'watchlists'>, 'id' | 'type' | 'value' | 'source' | 'objective'>;
 
 export type IngestPlan = {
   ads: ScannedAd[];
   items: TablesInsert<'items'>[];
   // Rank in the source's order for each external id.
   ranks: Map<string, number>;
+  // Ads left out because their objective is not the board's.
+  offObjective: number;
 };
 
 // Turns one page of scraper rows into item rows. offset is the position of
 // the page in the dataset, so ranks continue across pages. Rows the source
-// does not recognize are skipped; a repeated ad keeps its first rank.
+// does not recognize are skipped, and so are ads run for another objective
+// than the board's; a repeated ad keeps its first rank.
 export function planIngest(board: Board, rows: Record<string, unknown>[], offset: number, now: string): IngestPlan {
   const ads: ScannedAd[] = [];
   const ranks = new Map<string, number>();
+  let offObjective = 0;
   rows.forEach((row, i) => {
     const ad = scannedAd(board.source, row);
     if (!ad || ranks.has(ad.externalId)) return;
+    if (!fitsObjective(board.objective, ad.objectiveSource)) {
+      offObjective++;
+      return;
+    }
     ranks.set(ad.externalId, ad.rank ?? offset + i + 1);
     ads.push(ad);
   });
@@ -35,7 +43,7 @@ export function planIngest(board: Board, rows: Record<string, unknown>[], offset
     scan_json: ad.raw as Json,
     scanned_at: now,
   }));
-  return { ads, items, ranks };
+  return { ads, items, ranks, offObjective };
 }
 
 // Our final status for an Apify run that has ended.

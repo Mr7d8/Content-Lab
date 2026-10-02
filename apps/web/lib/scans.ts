@@ -103,7 +103,7 @@ export async function syncScan(admin: AdminClient, runId: string, budgetMs = 800
   if (!run) return { status: 'missing', synced: 0, added: 0, done: true, error: 'Scan not found' };
   const idle = { status: run.status, synced: run.synced_count, added: 0, done: run.status !== 'running', error: run.error };
   if (run.kind !== 'scan' || run.status !== 'running' || !run.worker_run_id || !run.apify_dataset_id || !run.watchlist_id) return idle;
-  const { data: board } = await admin.from('watchlists').select('id, type, value, source').eq('id', run.watchlist_id).maybeSingle();
+  const { data: board } = await admin.from('watchlists').select('id, type, value, source, objective').eq('id', run.watchlist_id).maybeSingle();
   if (!board) return idle;
 
   const token = apifyToken();
@@ -137,8 +137,9 @@ export async function syncScan(admin: AdminClient, runId: string, budgetMs = 800
 }
 
 // One page of rows: items (latest scan row, metrics), board membership in
-// rank order, metric snapshots, covers. Returns how many ads are new to the board.
-async function ingest(admin: AdminClient, board: { id: string; type: string; value: string; source: string }, rows: Record<string, unknown>[], offset: number): Promise<number> {
+// rank order, metric snapshots, covers. Ads run for another objective than
+// the board's are left out. Returns how many ads are new to the board.
+async function ingest(admin: AdminClient, board: { id: string; type: string; value: string; source: string; objective: string | null }, rows: Record<string, unknown>[], offset: number): Promise<number> {
   const now = new Date().toISOString();
   const plan = planIngest(board, rows, offset, now);
   if (!plan.items.length) return 0;
