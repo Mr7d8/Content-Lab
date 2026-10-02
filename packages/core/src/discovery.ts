@@ -1,7 +1,7 @@
 import type { Tables } from './db';
 
-// Boards (the watchlists table): what each source can search by, when a
-// scheduled board is due for a scan, and the budget left for one.
+// Boards (the watchlists table): what each source can search by and when a
+// scheduled board is due for a scan.
 
 type Watchlist = Tables<'watchlists'>;
 
@@ -38,12 +38,4 @@ export function dueWatchlists<W extends Pick<Watchlist, 'id' | 'active' | 'refre
   return watchlists
     .filter((w) => (DISCOVERY_SOURCES as readonly string[]).includes(w.source) && isDue(w, now))
     .sort((a, b) => (nextSweepAt(a, now)?.getTime() ?? 0) - (nextSweepAt(b, now)?.getTime() ?? 0));
-}
-
-// Spend cap for the next scan: the per-scan cap, limited by what is left of
-// the month. 0 means no scan may start.
-export function sweepRunCap(settings: { monthly_spend_cap_usd: number; sweep_spend_cap_usd: number }, monthSpendUsd: number): number {
-  const left = Number(settings.monthly_spend_cap_usd) - monthSpendUsd;
-  const cap = Math.min(Number(settings.sweep_spend_cap_usd), left);
-  return cap > 0 ? Math.floor(cap * 10000) / 10000 : 0;
 }

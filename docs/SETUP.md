@@ -19,7 +19,7 @@ What things cost (estimates, checked against the bills):
 
 | Action | Cost |
 | --- | --- |
-| Scan of 30 ads | about $0.10 (Apify, pay per result) |
+| Scan of 30 ads | about $0.10 (Apify, pay per result); 200 ads about $0.61 |
 | Decode of one ad | about $0.01 to $0.02 (Gemini video plus Jev) |
 
 Both count toward the monthly cap set in the spend chip on the board ($5 by default).
@@ -34,6 +34,7 @@ Both count toward the monthly cap set in the spend chip on the board ($5 by defa
    - `20261002000100_close_functions_to_anon.sql`: signed-out visitors cannot call the app's functions.
    - `20261003000000_v2_boards.sql`: board membership, scan and decode status, the public `covers` bucket, decode spend.
    - `20261003000100_scan_json.sql`: the latest scan row per ad.
+   - `20261004000000_scan_up_to_200.sql`: up to 200 ads per scan.
 3. Add yourself to the allowlist (only listed emails can see any data):
 
    ```sql

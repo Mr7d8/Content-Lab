@@ -1,6 +1,6 @@
 'use client';
 
-import { estimateScan, labelText, MOROCCO_PRESETS, type BoardPreset } from '@content-lab/core';
+import { estimateScan, labelText, MAX_SCAN_ADS, MOROCCO_PRESETS, type BoardPreset } from '@content-lab/core';
 import { AnimatePresence, motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
@@ -219,7 +219,7 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
             </label>
 
             <Field label={`Ads per scan · ${ads}`}>
-              <input type="range" min={10} max={50} step={5} value={ads} onChange={(e) => setAds(Number(e.target.value))} className="w-full accent-[var(--accent)]" aria-label="Ads per scan" />
+              <input type="range" min={10} max={MAX_SCAN_ADS} step={10} value={ads} onChange={(e) => setAds(Number(e.target.value))} className="w-full accent-[var(--accent)]" aria-label="Ads per scan" />
               <p className="text-xs text-faint">About ${estimateScan(ads).toFixed(2)} per scan. Decoding is separate and only when you ask.</p>
             </Field>
 

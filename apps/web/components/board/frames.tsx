@@ -86,7 +86,7 @@ export function FrameByFrame({
         <p className="mono tabular-nums text-faint">{rows.length} moments · click one to play from there</p>
       </div>
       <CaptureNote capture={capture} capturable={capturable} missing={missing} />
-      <ol ref={strip} className="no-scrollbar -mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2">
+      <ol ref={strip} className="no-scrollbar -m-1 flex snap-x gap-3 overflow-x-auto p-1 pb-2">
         {rows.map((r, i) => {
           const on = i === active;
           const color = r.role ? (BEAT_COLORS[r.role as BeatRole] ?? BEAT_COLORS.other) : null;

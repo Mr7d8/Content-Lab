@@ -1,6 +1,6 @@
 'use client';
 
-import { DECODE_ESTIMATE_USD, type Tables } from '@content-lab/core';
+import { DECODE_ESTIMATE_USD, estimateScan, type Tables } from '@content-lab/core';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { deleteBoard, updateBoard } from '@/app/(app)/b/actions';
@@ -8,7 +8,7 @@ import { motion } from 'motion/react';
 import { agoText, axesFor, boardEyebrow, formatCount, type BoardAd } from '@/lib/board-view';
 import { Cover } from './cover';
 import { Glow } from './glass';
-import { CADENCES, PERIODS, scheduleText } from '@/lib/watchlists';
+import { ADS_PER_SCAN, CADENCES, PERIODS, scheduleText } from '@/lib/watchlists';
 import { Popover } from './popover';
 import { SearchSettings } from './search-settings';
 import type { ScanView } from './use-scan';
@@ -28,9 +28,9 @@ function BoardMenu({ board }: { board: Tables<'watchlists'> }) {
   const opts = <T extends string | number>(label: string, value: T, options: { value: T; label: string }[], onPick: (v: T) => void) => (
     <div className="space-y-1.5">
       <p className="mono text-faint">{label}</p>
-      <div className="segmented" role="group" aria-label={label}>
+      <div className="segmented flex w-full" role="group" aria-label={label}>
         {options.map((o) => (
-          <button key={String(o.value)} type="button" aria-pressed={o.value === value} disabled={pending} onClick={() => onPick(o.value)}>{o.label}</button>
+          <button key={String(o.value)} type="button" className="flex-1 !px-1.5" aria-pressed={o.value === value} disabled={pending} onClick={() => onPick(o.value)}>{o.label}</button>
         ))}
       </div>
     </div>
@@ -62,7 +62,8 @@ function BoardMenu({ board }: { board: Tables<'watchlists'> }) {
           <SearchSettings board={board} pending={pending} save={save} />
           {opts('Schedule', board.refresh_cadence, CADENCES.map((c) => ({ value: c as string, label: c === 'manual' ? 'Manual' : c === 'weekly' ? 'Weekly' : 'Monthly' })), (v) => save({ refresh_cadence: v }))}
           {board.source === 'tiktok_creative_center' && opts('Period', board.period_days, PERIODS.map((p) => ({ value: p as number, label: `${p} days` })), (v) => save({ period_days: v }))}
-          {opts('Ads per scan', board.max_items, [10, 20, 30, 50].map((n) => ({ value: n, label: String(n) })), (v) => save({ max_items: v }))}
+          {opts('Ads per scan', board.max_items, ADS_PER_SCAN.map((n) => ({ value: n as number, label: String(n) })), (v) => save({ max_items: v }))}
+          <p className="-mt-2.5 text-[11px] text-faint">About ${estimateScan(board.max_items).toFixed(2)} per scan, paid per ad found.</p>
           {message && <p className="text-xs text-red" role="alert">{message}</p>}
           <div className="border-t border-[var(--line)] pt-3">
             <button
@@ -153,22 +154,16 @@ function CoverStack({ ads, source, onSelect }: { ads: BoardAd[]; source: string;
   );
 }
 
-export function Hero({
+// Scan, decode the top 10 and the board settings. Lives in the overview
+// header, next to the ads it acts on, so the hero stays short.
+export function BoardActions({
   board,
-  headline,
-  count,
   scan,
   onScan,
   toDecode,
   onDecodeTop,
-  top,
-  onSelect,
 }: {
-  top: BoardAd[];
-  onSelect: (id: string) => void;
   board: Tables<'watchlists'>;
-  headline: string;
-  count: number;
   scan: ScanView;
   onScan: () => void;
   toDecode: number;
@@ -176,7 +171,55 @@ export function Hero({
 }) {
   const scanning = scan.phase === 'starting' || scan.phase === 'running';
   return (
-    <section className="grid gap-6 pb-8 pt-10 sm:pt-14 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+    <div className="flex flex-wrap items-center gap-2">
+      <button type="button" className="btn-primary !px-5 !py-2.5" onClick={onScan} disabled={scanning}>
+        {scanning ? (
+          <>
+            <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-white" />
+            Scanning
+          </>
+        ) : (
+          <>
+            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden><path d="M12 7a5 5 0 1 1-1.5-3.6M12 2v2.6H9.4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            Scan now
+          </>
+        )}
+      </button>
+      <button
+        type="button"
+        className="btn-secondary !px-5 !py-2.5"
+        onClick={onDecodeTop}
+        disabled={!toDecode}
+        title={toDecode ? `The rest of the top 10, about $${(toDecode * DECODE_ESTIMATE_USD).toFixed(2)}` : 'The top 10 are decoded'}
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden><path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7 5.6 5.6Z" fill="currentColor" /></svg>
+        {toDecode === 10 ? 'Decode top 10' : toDecode ? `Decode ${toDecode} more` : 'Top 10 decoded'}
+      </button>
+      <BoardMenu board={board} />
+    </div>
+  );
+}
+
+export function Hero({
+  board,
+  headline,
+  count,
+  scan,
+  top,
+  onSelect,
+  market,
+}: {
+  board: Tables<'watchlists'>;
+  headline: string;
+  count: number;
+  scan: ScanView;
+  top: BoardAd[];
+  onSelect: (id: string) => void;
+  // The market filter, shown on the scan line.
+  market?: React.ReactNode;
+}) {
+  return (
+    <section className="grid gap-6 pb-6 pt-5 sm:pt-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
       <div className="min-w-0">
         <p className="mono flex flex-wrap gap-x-2 gap-y-1 text-faint">
           {boardEyebrow(board).map((part, i) => (
@@ -186,45 +229,23 @@ export function Hero({
             </span>
           ))}
         </p>
-        <h1 className="mt-3 text-[38px] font-semibold leading-[1.04] tracking-[-0.035em] sm:text-[56px]" dir="auto">
+        <h1 className="mt-2.5 text-[38px] font-semibold leading-[1.04] tracking-[-0.035em] sm:text-[56px]" dir="auto">
           <span className="text-faint">Decode </span>
           {board.name}
           <span className="text-accent">.</span>
         </h1>
         <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-sub">{headline}</p>
-        <div className="mt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2.5">
           <ScanLine board={board} scan={scan} count={count} />
-        </div>
-      </div>
-      <div className="flex flex-col items-start gap-6 lg:items-center">
-      <CoverStack ads={top} source={board.source} onSelect={onSelect} />
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn-primary !px-5 !py-2.5" onClick={onScan} disabled={scanning}>
-          {scanning ? (
+          {market && (
             <>
-              <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-white" />
-              Scanning
-            </>
-          ) : (
-            <>
-              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden><path d="M12 7a5 5 0 1 1-1.5-3.6M12 2v2.6H9.4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              Scan now
+              <span aria-hidden className="hidden h-4 w-px bg-[var(--fill-strong)] sm:block" />
+              {market}
             </>
           )}
-        </button>
-        <button
-          type="button"
-          className="btn-secondary !px-5 !py-2.5"
-          onClick={onDecodeTop}
-          disabled={!toDecode}
-          title={toDecode ? `The rest of the top 10, about $${(toDecode * DECODE_ESTIMATE_USD).toFixed(2)}` : 'The top 10 are decoded'}
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden><path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7 5.6 5.6Z" fill="currentColor" /></svg>
-          {toDecode === 10 ? 'Decode top 10' : toDecode ? `Decode ${toDecode} more` : 'Top 10 decoded'}
-        </button>
-        <BoardMenu board={board} />
+        </div>
       </div>
-      </div>
+      <CoverStack ads={top} source={board.source} onSelect={onSelect} />
     </section>
   );
 }

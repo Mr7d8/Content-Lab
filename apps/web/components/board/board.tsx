@@ -7,7 +7,7 @@ import type { BoardData } from '@/lib/board';
 import { boardHeadline, boardStats, byMarket, groupAds, marketCounts, rankAds, splitByScan, type BoardAd, type MarketFilter as Market } from '@/lib/board-view';
 import { DeepDive } from './deep-dive';
 import { Ambient } from './glass';
-import { Hero } from './hero';
+import { BoardActions, Hero } from './hero';
 import { Inspector } from './inspector';
 import { Kpis } from './kpis';
 import { GateBar, MarketFilter } from './market';
@@ -122,17 +122,14 @@ export function Board({ data }: { data: BoardData }) {
           headline={boardHeadline(ads, source)}
           count={counts.all}
           scan={scan}
-          onScan={startScan}
-          toDecode={topIds.length}
-          onDecodeTop={decodeTop}
           top={ads.slice(0, 3)}
           onSelect={select}
+          market={<MarketFilter value={market} counts={counts} onChange={setMarket} />}
         />
-        <MarketFilter value={market} counts={counts} onChange={setMarket} />
         {board.moroccan_only && <GateBar boardId={board.id} gate={data.gate} ads={inScan} showLeftOut={showLeftOut} onToggle={() => setShowLeftOut((v) => !v)} />}
         <Kpis stats={stats} source={source} decoding={queue.active.size} cover={ads[0]?.cover ?? null} />
 
-        <section className="mt-12" aria-labelledby="overview-title">
+        <section className="mt-10" aria-labelledby="overview-title">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="mono text-faint">Overview</p>
@@ -143,7 +140,9 @@ export function Board({ data }: { data: BoardData }) {
                 </button>
               )}
             </div>
-            <div className="no-scrollbar -mx-4 flex max-w-[calc(100%+32px)] gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:max-w-full sm:flex-wrap sm:px-0" role="group" aria-label="Filter by format">
+            <div className="flex min-w-0 max-w-full flex-col items-start gap-3 sm:items-end">
+            <BoardActions board={board} scan={scan} onScan={startScan} toDecode={topIds.length} onDecodeTop={decodeTop} />
+            <div className="no-scrollbar -mx-4 flex max-w-[calc(100%+32px)] gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:max-w-full sm:flex-wrap sm:justify-end sm:px-0" role="group" aria-label="Filter by format">
               {formats.length ? (
                 <>
                   <button type="button" className={`chip ${format === null ? 'active' : ''}`} onClick={() => setFormat(null)}>All formats</button>
@@ -157,6 +156,7 @@ export function Board({ data }: { data: BoardData }) {
               ) : (
                 <p className="mono text-faint">Formats appear here as ads are decoded</p>
               )}
+            </div>
             </div>
           </div>
 

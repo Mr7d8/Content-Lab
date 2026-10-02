@@ -13,12 +13,15 @@ const OPTIONS: { value: Filter; label: string }[] = [
   { value: 'elsewhere', label: 'Elsewhere' },
 ];
 
+const HOW = 'From the ad text: dirhams, Darija, Moroccan places; decoding adds the speech and on-screen text.';
+
 // Shows only the ads that look made for Moroccan shoppers, or the others.
+// Sits on the hero's scan line; how it decides is in the tooltip.
 export function MarketFilter({ value, counts, onChange }: { value: Filter; counts: Record<Filter, number>; onChange: (f: Filter) => void }) {
   return (
-    <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2">
-      <p className="mono text-faint">Market</p>
-      <div className="segmented max-w-full overflow-x-auto no-scrollbar" role="group" aria-label="Filter by market">
+    <div className="flex min-w-0 max-w-full items-center gap-2.5" title={HOW}>
+      <p className="mono shrink-0 text-faint">Market</p>
+      <div className="segmented no-scrollbar max-w-full overflow-x-auto" role="group" aria-label="Filter by market" aria-description={HOW}>
         {OPTIONS.map((o) => (
           <button
             key={o.value}
@@ -32,7 +35,6 @@ export function MarketFilter({ value, counts, onChange }: { value: Filter; count
           </button>
         ))}
       </div>
-      <p className="text-[12px] text-faint">From the ad text: dirhams, Darija, Moroccan places; decoding adds the speech and on-screen text.</p>
     </div>
   );
 }
@@ -127,7 +129,7 @@ export function GateBar({
   const check = useMarketCheck(boardId, gate.pending, true);
   const shown = ads.filter((a) => (a.gate ?? 'shown') === 'shown').length;
   return (
-    <div className="-mt-3 mb-5 flex flex-wrap items-center gap-x-3 gap-y-2 text-[12.5px] text-sub" role="status">
+    <div className="-mt-2 mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 text-[12.5px] text-sub" role="status">
       <span className="flex items-center gap-1.5 font-medium text-ink">
         <span className="h-2 w-2 rounded-full bg-green" aria-hidden /> Moroccan ads only
       </span>

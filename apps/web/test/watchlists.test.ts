@@ -46,7 +46,8 @@ describe('parseWatchlistForm', () => {
     expect(parseWatchlistForm(form({ source: 'facebook', type: 'keyword', value: 'x' }))).toMatchObject({ ok: false });
     expect(parseWatchlistForm(form({ source: 'tiktok_organic', type: 'keyword', value: '   ' }))).toMatchObject({ ok: false });
     expect(parseWatchlistForm(form({ source: 'tiktok_organic', type: 'keyword', value: 'x', region: 'Mars' }))).toMatchObject({ ok: false });
-    expect(parseWatchlistForm(form({ source: 'tiktok_organic', type: 'keyword', value: 'x', max_items: '80' }))).toMatchObject({ ok: false });
+    expect(parseWatchlistForm(form({ source: 'tiktok_organic', type: 'keyword', value: 'x', max_items: '201' }))).toMatchObject({ ok: false });
+    expect(parseWatchlistForm(form({ source: 'tiktok_organic', type: 'keyword', value: 'x', max_items: '200' }))).toMatchObject({ row: { max_items: 200 } });
     expect(parseWatchlistForm(form({ source: 'tiktok_organic', type: 'keyword', value: 'x', period_days: '14' }))).toMatchObject({ ok: false });
     expect(parseWatchlistForm(form({ source: 'tiktok_organic', type: 'keyword', value: 'x', period_days: '7' }))).toMatchObject({ row: { period_days: 7 } });
   });
