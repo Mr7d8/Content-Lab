@@ -1,6 +1,6 @@
 'use client';
 
-import { estimateScan, labelText, MAX_SCAN_ADS, MOROCCO_PRESETS, type BoardPreset } from '@content-lab/core';
+import { estimateScan, labelText, MAX_SCAN_ADS, MOROCCO_PRESETS, searchTerms, termsLabel, type BoardPreset } from '@content-lab/core';
 import { AnimatePresence, motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
@@ -43,6 +43,30 @@ function Segmented<T extends string | number>({ value, options, onChange, label 
   );
 }
 
+// A starter as the form the board is created from, with the settings shared
+// by every board made at once.
+function presetForm(p: BoardPreset, shared: { ads: number; cadence: string; period: number }): FormData {
+  const form = new FormData();
+  form.set('source', p.source);
+  form.set('type', p.type);
+  form.set('value', p.type === 'snowball' ? 'auto' : p.value);
+  form.set('moroccan_only', String(p.moroccanOnly));
+  form.set('region', p.region);
+  if (p.source === 'tiktok_creative_center' && p.objective) form.set('objective', p.objective);
+  form.set('period_days', String(shared.period));
+  form.set('max_items', String(shared.ads));
+  form.set('refresh_cadence', shared.cadence);
+  form.set('name', p.name);
+  return form;
+}
+
+// "Meta ads · youcan.shop, livraison gratuite +6 · Morocco"
+function presetLine(p: BoardPreset): string {
+  const source = SOURCES.find((s) => s.value === p.source)?.label ?? p.source;
+  const search = p.type === 'snowball' ? 'Follows the Moroccan advertisers found' : termsLabel(searchTerms(p.value, p.type));
+  return `${source} · ${search} · ${regionLabel(p.region)}`;
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
@@ -65,7 +89,8 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
   const [cadence, setCadence] = useState<string>('manual');
   const [name, setName] = useState('');
   const [moroccanOnly, setMoroccanOnly] = useState(true);
-  const [preset, setPreset] = useState<string | null>(null);
+  // Starters picked: one fills the form below; several each become a board.
+  const [picked, setPicked] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -81,7 +106,6 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
   const needsValue = !(source === 'tiktok_creative_center' && (search.type === 'industry' || search.type === 'snowball'));
 
   const usePreset = (p: BoardPreset) => {
-    setPreset(p.id);
     setSource(p.source);
     setType(p.type);
     setValue(p.type === 'snowball' ? '' : p.value);
@@ -90,10 +114,42 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
     setMoroccanOnly(p.moroccanOnly);
     setName(p.name);
   };
+  const togglePreset = (p: BoardPreset) => {
+    const next = picked.includes(p.id) ? picked.filter((id) => id !== p.id) : [...picked, p.id];
+    setPicked(next);
+    // One left: the form shows it, editable.
+    const only = next.length === 1 ? MOROCCO_PRESETS.find((x) => x.id === next[0]) : undefined;
+    if (only) usePreset(only);
+  };
+  const chosen = MOROCCO_PRESETS.filter((p) => picked.includes(p.id));
+  const multi = chosen.length > 1;
+  const estimate = multi ? chosen.reduce((sum, p) => sum + estimateScan(ads, p.source), 0) : estimateScan(ads, source);
+
+  // Several starters: one board each, made one after another, each scan started.
+  const submitMany = () =>
+    start(async () => {
+      const made: string[] = [];
+      const failed: string[] = [];
+      for (const p of chosen) {
+        const result = await createBoard(presetForm(p, { ads, cadence, period }));
+        if (result.ok && result.id) made.push(result.id);
+        else failed.push(`${p.label} (${result.ok ? 'not created' : result.message})`);
+      }
+      await Promise.all(made.map((id) => fetch(`/api/boards/${id}/scan`, { method: 'POST' }).catch(() => null)));
+      if (failed.length) {
+        setError(`${made.length ? `Created ${made.length}, scanning. ` : ''}Not created: ${failed.join('; ')}.`);
+        router.refresh();
+        return;
+      }
+      onClose();
+      setPicked([]);
+      router.push(`/b/${made[0]}`);
+    });
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (multi) return submitMany();
     const form = new FormData();
     form.set('source', source);
     form.set('type', search.type);
@@ -148,76 +204,104 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
             </div>
 
             <Field label="Moroccan starters">
-              <div className="flex flex-wrap gap-1.5">
-                {MOROCCO_PRESETS.map((p) => (
-                  <button key={p.id} type="button" className={`chip ${preset === p.id ? 'active' : ''}`} aria-pressed={preset === p.id} onClick={() => usePreset(p)} title={p.description}>
-                    {p.label}
-                  </button>
-                ))}
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Moroccan starters, pick one or more">
+                {MOROCCO_PRESETS.map((p) => {
+                  const on = picked.includes(p.id);
+                  return (
+                    <button key={p.id} type="button" className={`chip ${on ? 'active' : ''}`} aria-pressed={on} onClick={() => togglePreset(p)} title={p.description}>
+                      {on && <span aria-hidden>✓</span>}
+                      {p.label}
+                    </button>
+                  );
+                })}
               </div>
-              {preset && <p className="text-xs leading-snug text-sub">{MOROCCO_PRESETS.find((p) => p.id === preset)?.description}</p>}
+              {chosen.length === 1 ? (
+                <p className="text-xs leading-snug text-sub">{chosen[0]?.description}</p>
+              ) : !multi ? (
+                <p className="text-xs leading-snug text-faint">Pick one to fill the form, or several to make a board for each.</p>
+              ) : null}
             </Field>
 
-            <Field label="Source">
-              <Segmented
-                label="Source"
-                value={source}
-                onChange={(s) => {
-                  setSource(s);
-                  setType(SEARCHES[s][0]?.type ?? 'keyword');
-                }}
-                options={SOURCES}
-              />
-              {source === 'meta_ad_library' && (
-                <p className="text-xs leading-snug text-sub">
-                  Video ads running now on Facebook and Instagram, from Meta&apos;s Ad Library. Meta shows no CTR or likes, so ads rank by how long they have run.
-                </p>
-              )}
-            </Field>
+            {multi && (
+              <Field label={`${chosen.length} boards`}>
+                <ul className="space-y-1.5">
+                  {chosen.map((p) => (
+                    <li key={p.id} className="rounded-[14px] bg-white/60 px-3 py-2 shadow-[var(--glass-rim)]">
+                      <p className="text-[13.5px] font-semibold tracking-tight">{p.label}</p>
+                      <p className="truncate text-xs text-sub" dir="auto">{presetLine(p)}</p>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-faint">Each starter becomes its own board with its own search. The schedule and ads per scan below apply to all of them.</p>
+              </Field>
+            )}
 
-            <Field label="Search">
-              <div className="flex flex-wrap items-center gap-2">
-                <Segmented label="Search by" value={search.type} onChange={setType} options={searches.map((s) => ({ value: s.type, label: s.label }))} />
-              </div>
-              {needsValue ? (
-                <>
-                  <textarea
-                    className="field mt-2 min-h-[64px] resize-y"
-                    required
-                    maxLength={700}
-                    rows={2}
-                    value={value}
-                    onChange={(e) => setValue(e.target.value)}
-                    placeholder={search.placeholder}
-                    aria-label={search.label}
-                    dir="auto"
-                  />
-                  <p className="text-xs text-faint">
-                    {source === 'meta_ad_library' && search.type === 'advertiser'
-                      ? 'Up to 10 page names, separated by commas. Known competitors are followed by their page; other names keep only ads from pages of that name.'
-                      : 'Up to 10 terms, separated by commas. Each one is searched and the results are pooled.'}
+            {!multi && (
+              <>
+              <Field label="Source">
+                <Segmented
+                  label="Source"
+                  value={source}
+                  onChange={(s) => {
+                    setSource(s);
+                    setType(SEARCHES[s][0]?.type ?? 'keyword');
+                  }}
+                  options={SOURCES}
+                />
+                {source === 'meta_ad_library' && (
+                  <p className="text-xs leading-snug text-sub">
+                    Video ads running now on Facebook and Instagram, from Meta&apos;s Ad Library. Meta shows no CTR or likes, so ads rank by how long they have run.
                   </p>
-                </>
-              ) : search.type === 'snowball' ? (
-                <p className="mt-1 text-xs text-sub">Searches for the advertisers found to be Moroccan by the checks, and the ones you marked Moroccan. It grows as you scan other Moroccan boards.</p>
-              ) : (
-                <p className="mt-1 text-xs text-sub">The best performing ads across every industry, for the country and objective below.</p>
-              )}
-            </Field>
+                )}
+              </Field>
+
+              <Field label="Search">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Segmented label="Search by" value={search.type} onChange={setType} options={searches.map((s) => ({ value: s.type, label: s.label }))} />
+                </div>
+                {needsValue ? (
+                  <>
+                    <textarea
+                      className="field mt-2 min-h-[64px] resize-y"
+                      required
+                      maxLength={700}
+                      rows={2}
+                      value={value}
+                      onChange={(e) => setValue(e.target.value)}
+                      placeholder={search.placeholder}
+                      aria-label={search.label}
+                      dir="auto"
+                    />
+                    <p className="text-xs text-faint">
+                      {source === 'meta_ad_library' && search.type === 'advertiser'
+                        ? 'Up to 10 page names, separated by commas. Known competitors are followed by their page; other names keep only ads from pages of that name.'
+                        : 'Up to 10 terms, separated by commas. Each one is searched and the results are pooled.'}
+                    </p>
+                  </>
+                ) : search.type === 'snowball' ? (
+                  <p className="mt-1 text-xs text-sub">Searches for the advertisers found to be Moroccan by the checks, and the ones you marked Moroccan. It grows as you scan other Moroccan boards.</p>
+                ) : (
+                  <p className="mt-1 text-xs text-sub">The best performing ads across every industry, for the country and objective below.</p>
+                )}
+              </Field>
+              </>
+            )}
 
             <div className="grid gap-5 sm:grid-cols-2">
-              <Field label="Country">
-                <select className="field" value={region} onChange={(e) => setRegion(e.target.value)} aria-label="Country">
-                  <option value="">Any region</option>
-                  {REGION_OPTIONS.map((r) => <option key={r} value={r}>{regionLabel(r)}</option>)}
-                </select>
-              </Field>
-              {source === 'tiktok_creative_center' && (
+              {!multi && (
+                <Field label="Country">
+                  <select className="field" value={region} onChange={(e) => setRegion(e.target.value)} aria-label="Country">
+                    <option value="">Any region</option>
+                    {REGION_OPTIONS.map((r) => <option key={r} value={r}>{regionLabel(r)}</option>)}
+                  </select>
+                </Field>
+              )}
+              {!multi && source === 'tiktok_creative_center' && (
                 <Field label="Objective">
                   <Segmented label="Objective" value={objective} onChange={setObjective} options={[{ value: '', label: 'All' }, ...OBJECTIVES.map((o) => ({ value: o, label: labelText(o) }))]} />
                 </Field>
               )}
-              {source === 'tiktok_creative_center' && (
+              {!multi && source === 'tiktok_creative_center' && (
                 <Field label="Period">
                   <Segmented label="Period" value={period} onChange={setPeriod} options={PERIODS.map((p) => ({ value: p, label: `${p} days` }))} />
                 </Field>
@@ -227,30 +311,36 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
               </Field>
             </div>
 
-            <label className="flex cursor-pointer items-start gap-3 rounded-[16px] bg-white/60 p-3 shadow-[var(--glass-rim)]">
-              <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--accent)]" checked={moroccanOnly} onChange={(e) => setMoroccanOnly(e.target.checked)} />
-              <span className="min-w-0">
-                <span className="block text-[13.5px] font-semibold tracking-tight">Moroccan ads only</span>
-                <span className="block text-xs leading-snug text-sub">
-                  Ads made for other countries are left out. Unclear ones are checked first: their landing page, then their cover. About a cent per 5 ads checked.
+            {!multi && (
+              <label className="flex cursor-pointer items-start gap-3 rounded-[16px] bg-white/60 p-3 shadow-[var(--glass-rim)]">
+                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--accent)]" checked={moroccanOnly} onChange={(e) => setMoroccanOnly(e.target.checked)} />
+                <span className="min-w-0">
+                  <span className="block text-[13.5px] font-semibold tracking-tight">Moroccan ads only</span>
+                  <span className="block text-xs leading-snug text-sub">
+                    Ads made for other countries are left out. Unclear ones are checked first: their landing page, then their cover. About a cent per 5 ads checked.
+                  </span>
                 </span>
-              </span>
-            </label>
+              </label>
+            )}
 
             <Field label={`Ads per scan · ${ads}`}>
               <input type="range" min={10} max={MAX_SCAN_ADS} step={10} value={ads} onChange={(e) => setAds(Number(e.target.value))} className="w-full accent-[var(--accent)]" aria-label="Ads per scan" />
-              <p className="text-xs text-faint">About ${estimateScan(ads, source).toFixed(2)} per scan. Decoding is separate and only when you ask.</p>
+              <p className="text-xs text-faint">
+                About ${estimate.toFixed(2)} per scan{multi ? ` for the ${chosen.length} boards` : ''}. Decoding is separate and only when you ask.
+              </p>
             </Field>
 
-            <Field label="Name (optional)">
-              <input className="field" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} placeholder="Filled in from the search and country" dir="auto" />
-            </Field>
+            {!multi && (
+              <Field label="Name (optional)">
+                <input className="field" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} placeholder="Filled in from the search and country" dir="auto" />
+              </Field>
+            )}
 
             {error && <p className="text-sm text-red" role="alert">{error}</p>}
             <div className="flex items-center justify-end gap-2 pt-1">
               <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={pending || (needsValue && !value.trim())}>
-                {pending ? 'Creating…' : 'Create and scan'}
+              <button type="submit" className="btn-primary" disabled={pending || (!multi && needsValue && !value.trim())}>
+                {pending ? 'Creating…' : multi ? `Create ${chosen.length} boards and scan` : 'Create and scan'}
               </button>
             </div>
           </motion.form>
