@@ -4,6 +4,7 @@ import { scaleLinear, scaleLog } from 'd3-scale';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { axesFor, formatCount, median, spreadPoints, type BoardAd } from '@/lib/board-view';
+import { covers } from '@/lib/cover-loader';
 import { Cover } from './cover';
 import { Glow, ProgressiveBlur } from './glass';
 
@@ -19,10 +20,11 @@ const fmt = (axis: 'likes' | 'views' | 'ctr', v: number | undefined) => (v === u
 
 type Rect = { x0: number; y0: number; x1: number; y1: number };
 
-// Covers fly in from their tiles in the Top ads list, one after another in
-// rank order: departures spread over about 1.6 s however many ads there are
-// (a short board goes a little slower), each flight 0.8 s. The flight eases
-// in and out, so it is seen leaving its tile, not only landing.
+// Covers fly in from their tiles in the Top ads list, each once its image
+// has loaded (cover-loader: a few at a time, best ranked first, shared with
+// the list), and one after another: departures at least ENTRY_S / ads apart
+// (50 ms at most), each flight 0.8 s. The flight eases in and out, so it is
+// seen leaving its tile, not only landing.
 const ENTRY_S = 1.6;
 const FLY_S = 0.8;
 const EASE_FLY = [0.45, 0, 0.2, 1] as const;
@@ -126,32 +128,54 @@ export function PerfMap({
     };
   }, [plotted, axes.x, axes.y, axes.yLog, W, H, T.w, T.h, M.left, M.right, M.top, M.bottom, narrow]);
 
-  // Takeoffs for covers new to the map, measured before they paint (a cover
-  // shows only once it has one). Ads that leave the map forget theirs, so
-  // they fly in again when they come back, as with the earlier-scans toggle.
+  // Which covers have their image in, asked for in rank order.
+  const loaded = useRef(new Set<string>());
+  const [loadTick, setLoadTick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    for (const a of plotted) {
+      if (loaded.current.has(a.id)) continue;
+      void (a.cover ? covers.load(a.cover) : Promise.resolve()).then(() => {
+        if (!live) return;
+        loaded.current.add(a.id);
+        setLoadTick((n) => n + 1);
+      });
+    }
+    return () => {
+      live = false;
+    };
+  }, [plotted]);
+
+  // Takeoffs for covers whose image is in, measured before they paint (a
+  // cover shows only once it has one). Ads that leave the map forget theirs,
+  // so they fly in again when they come back, as with the earlier-scans toggle.
   const takeoffs = useRef(new Map<string, Takeoff>());
+  const lastTakeoff = useRef(0);
   const [, setMeasured] = useState(0);
   useLayoutEffect(() => {
     const ids = new Set(plotted.map((a) => a.id));
     for (const id of takeoffs.current.keys()) if (!ids.has(id)) takeoffs.current.delete(id);
-    const fresh = plotted.filter((a) => !takeoffs.current.has(a.id));
+    const fresh = plotted.filter((a) => loaded.current.has(a.id) && !takeoffs.current.has(a.id));
     const el = wrap.current;
     if (!fresh.length || !el) return;
     const box = el.getBoundingClientRect();
     const list = document.querySelector('[data-tiles]')?.getBoundingClientRect();
     const tileW = Array.from(document.querySelectorAll('[data-tile]'), (t) => t.getBoundingClientRect().width).find((w) => w > 0) ?? T.w * 2;
-    const step = Math.min(0.05, ENTRY_S / fresh.length) * 1000;
-    const now = performance.now();
-    fresh.forEach((a, k) => {
+    // Spaced by the whole map's count, so covers that load together still go one by one.
+    const step = Math.min(0.05, ENTRY_S / plotted.length) * 1000;
+    let at = Math.max(performance.now(), lastTakeoff.current + step);
+    fresh.forEach((a) => {
       const p = geometry.at.get(a.id);
       // No list on the page: in from the map's left edge, at the cover's height.
       const spot = list?.width ? tileSpot(a.id, list, tileW) : { cx: box.left - T.w, cy: box.top + (p?.y ?? H / 2), w: T.w };
-      takeoffs.current.set(a.id, { x: spot.cx - box.left - T.w / 2, y: spot.cy - box.top - T.h / 2, scale: Math.min(4, Math.max(1, spot.w / T.w)), at: now + k * step });
+      takeoffs.current.set(a.id, { x: spot.cx - box.left - T.w / 2, y: spot.cy - box.top - T.h / 2, scale: Math.min(4, Math.max(1, spot.w / T.w)), at });
+      lastTakeoff.current = at;
+      at += step;
     });
     setMeasured((n) => n + 1);
-    // geometry and T follow plotted and the width; a new takeoff is only needed for new ads.
+    // geometry and T follow plotted and the width; a new takeoff is only needed for a newly loaded ad.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plotted]);
+  }, [plotted, loadTick]);
 
   const point = (e: React.PointerEvent) => {
     const r = (wrap.current as HTMLDivElement).getBoundingClientRect();
