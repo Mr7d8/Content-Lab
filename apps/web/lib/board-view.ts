@@ -4,7 +4,7 @@ import { readStoredMarket, type GateStatus } from './gate';
 // Everything the board shows, computed from database rows. Pure, so the
 // server loader and the tests share it.
 
-export type AdMetrics = { ctr?: number; likes?: number; views?: number; shares?: number; comments?: number; costIndex?: number };
+export type AdMetrics = { ctr?: number; likes?: number; views?: number; shares?: number; comments?: number; costIndex?: number; days?: number; versions?: number };
 
 export type AdLabels = { format: string | null; hookType: string | null; structure: string | null; objective: string | null; language: string | null };
 
@@ -40,7 +40,7 @@ type ClassRow = Pick<Tables<'classifications'>, 'item_id' | 'labels_json' | 'cre
 type MediaRow = Pick<Tables<'media'>, 'item_id' | 'breakdown_json' | 'transcript'> & Partial<Pick<Tables<'media'>, 'ocr_text' | 'transcript_lang'>>;
 
 const METRIC_KEYS: Record<string, keyof AdMetrics> = {
-  ctr: 'ctr', likes: 'likes', views: 'views', shares: 'shares', comments: 'comments', cost_index: 'costIndex',
+  ctr: 'ctr', likes: 'likes', views: 'views', shares: 'shares', comments: 'comments', cost_index: 'costIndex', days_running: 'days', versions: 'versions',
 };
 
 // A decode still marked running after this long was cut off; offer it again.
@@ -51,7 +51,7 @@ const who = (v: string | null | undefined): string | null => (v && v.trim() && !
 
 export function toBoardAd(item: ItemRow, rank: number | null, labels: ClassRow | null, media: MediaRow | null, now = new Date()): BoardAd {
   const scan = item.scan_json && typeof item.scan_json === 'object' && !Array.isArray(item.scan_json) ? (item.scan_json as Record<string, unknown>) : null;
-  const scanned = scan ? scannedAd(item.source, scan) : null;
+  const scanned = scan ? scannedAd(item.source, scan, now) : null;
   const metrics: AdMetrics = {};
   for (const m of scanned?.metrics ?? []) {
     const key = METRIC_KEYS[m.name];
@@ -117,15 +117,34 @@ export function marketCounts(ads: BoardAd[]): Record<MarketFilter, number> {
 
 export const byMarket = (ads: BoardAd[], filter: MarketFilter): BoardAd[] => (filter === 'all' ? ads : ads.filter((a) => a.market.verdict === filter));
 
-// Which numbers the board plots and ranks by. Creative Center gives a CTR
-// score and likes; organic posts give views and likes. Never mixed.
-export type Axes = { x: 'likes' | 'views'; y: 'ctr' | 'likes'; yLog: boolean; rank: 'ctr' | 'views' };
+// The numbers a board shows, by source: Creative Center gives a CTR score
+// and likes; organic posts give views and likes; Meta's Ad Library gives
+// neither, so days running (advertisers keep paying for what sells) and the
+// versions of the ad they run. Never mixed.
+export type MetricKey = 'ctr' | 'likes' | 'views' | 'days' | 'versions';
+export const METRIC_NAME: Record<MetricKey, string> = { ctr: 'CTR', likes: 'Likes', views: 'Views', days: 'Days running', versions: 'Versions' };
+// After a number: "0.42 CTR", "1.2k likes", "45 days".
+export const METRIC_UNIT: Record<MetricKey, string> = { ctr: 'CTR', likes: 'likes', views: 'views', days: 'days', versions: 'versions' };
+// The unit after one number: "1 day", "3 versions".
+export const metricUnit = (key: MetricKey, v: number | null | undefined): string =>
+  v !== null && v !== undefined && Math.round(v) === 1 && key !== 'ctr' ? METRIC_UNIT[key].replace(/s$/, '') : METRIC_UNIT[key];
+export const metricWord = (key: MetricKey): string => (key === 'ctr' ? 'CTR' : METRIC_NAME[key].toLowerCase());
+export const formatMetric = (key: MetricKey, v: number | null | undefined): string =>
+  v === null || v === undefined ? '–' : key === 'ctr' ? v.toFixed(2) : key === 'days' ? String(Math.round(v)) : formatCount(v);
+
+// Which numbers the board plots (x on a log scale), ranks by, and shows
+// second (other).
+export type Axes = { x: MetricKey; y: MetricKey; yLog: boolean; rank: MetricKey; other: MetricKey };
 export const axesFor = (source: string): Axes =>
-  source === 'tiktok_organic' ? { x: 'views', y: 'likes', yLog: true, rank: 'views' } : { x: 'likes', y: 'ctr', yLog: false, rank: 'ctr' };
+  source === 'tiktok_organic'
+    ? { x: 'views', y: 'likes', yLog: true, rank: 'views', other: 'likes' }
+    : source === 'meta_ad_library'
+      ? { x: 'versions', y: 'days', yLog: false, rank: 'days', other: 'versions' }
+      : { x: 'likes', y: 'ctr', yLog: false, rank: 'ctr', other: 'likes' };
 
 export function rankAds(ads: BoardAd[], source: string): BoardAd[] {
-  const { rank } = axesFor(source);
-  return [...ads].sort((a, b) => (b.metrics[rank] ?? -1) - (a.metrics[rank] ?? -1) || (b.metrics.likes ?? -1) - (a.metrics.likes ?? -1));
+  const { rank, other } = axesFor(source);
+  return [...ads].sort((a, b) => (b.metrics[rank] ?? -1) - (a.metrics[rank] ?? -1) || (b.metrics[other] ?? -1) - (a.metrics[other] ?? -1));
 }
 
 export function median(values: number[]): number | null {
@@ -136,7 +155,7 @@ export function median(values: number[]): number | null {
 }
 
 export function boardStats(ads: BoardAd[], source: string) {
-  const { rank } = axesFor(source);
+  const { rank, other } = axesFor(source);
   const decoded = ads.filter((a) => a.decode.status === 'done');
   const formats = new Set(decoded.map((a) => a.labels?.format).filter(Boolean));
   const who = new Set(ads.map((a) => a.advertiser ?? a.handle).filter(Boolean));
@@ -146,7 +165,7 @@ export function boardStats(ads: BoardAd[], source: string) {
     formats: formats.size,
     advertisers: who.size,
     medianRank: median(ads.map((a) => a.metrics[rank]).filter((v): v is number => v !== undefined)),
-    medianLikes: median(ads.map((a) => a.metrics.likes).filter((v): v is number => v !== undefined)),
+    medianOther: median(ads.map((a) => a.metrics[other]).filter((v): v is number => v !== undefined)),
   };
 }
 
@@ -221,10 +240,11 @@ export function boardHeadline(ads: BoardAd[], source: string): string {
   if (!ads.length) return 'No ads yet. Scan the board to pull the top ads; it takes about a minute.';
   const stats = boardStats(ads, source);
   const what = source === 'tiktok_organic' ? 'top posts' : 'top ads';
-  if (!stats.decoded) return `${ads.length} ${what}, ranked by ${axesFor(source).rank === 'ctr' ? 'CTR' : 'views'}. Decode any of them to see the hook, the script and why it works.`;
+  const { rank } = axesFor(source);
+  if (!stats.decoded) return `${ads.length} ${what}, ranked by ${metricWord(rank)}. Decode any of them to see the hook, the script and why it works.`;
   const best = groupAds(ads, source, 'format').find((g) => g.count >= 2) ?? null;
   const lead = best
-    ? ` ${best.label} leads: median ${axesFor(source).rank === 'ctr' ? 'CTR' : 'views'} ${formatCount(best.median)} over ${best.count} ads.`
+    ? ` ${best.label} leads: median ${metricWord(rank)} ${formatMetric(rank, best.median)} over ${best.count} ads.`
     : '';
   return `${stats.decoded} of ${ads.length} ${what} decoded.${lead}`;
 }

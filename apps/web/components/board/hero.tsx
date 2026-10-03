@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { deleteBoard, updateBoard } from '@/app/(app)/b/actions';
 import { motion } from 'motion/react';
-import { agoText, axesFor, boardEyebrow, formatCount, scanProgress, type BoardAd, type ScanSummary } from '@/lib/board-view';
+import { agoText, axesFor, boardEyebrow, formatMetric, metricUnit, scanProgress, type BoardAd, type ScanSummary } from '@/lib/board-view';
 import { Cover } from './cover';
 import { Glow } from './glass';
 import { ADS_PER_SCAN, CADENCES, PERIODS, scheduleText } from '@/lib/watchlists';
@@ -63,7 +63,7 @@ function BoardMenu({ board }: { board: Tables<'watchlists'> }) {
           {opts('Schedule', board.refresh_cadence, CADENCES.map((c) => ({ value: c as string, label: c === 'manual' ? 'Manual' : c === 'weekly' ? 'Weekly' : 'Monthly' })), (v) => save({ refresh_cadence: v }))}
           {board.source === 'tiktok_creative_center' && opts('Period', board.period_days, PERIODS.map((p) => ({ value: p as number, label: `${p} days` })), (v) => save({ period_days: v }))}
           {opts('Ads per scan', board.max_items, ADS_PER_SCAN.map((n) => ({ value: n as number, label: String(n) })), (v) => save({ max_items: v }))}
-          <p className="-mt-2.5 text-[11px] text-faint">About ${estimateScan(board.max_items).toFixed(2)} per scan, paid per ad found.</p>
+          <p className="-mt-2.5 text-[11px] text-faint">About ${estimateScan(board.max_items, board.source).toFixed(2)} per scan, paid per ad found.</p>
           {message && <p className="text-xs text-red" role="alert">{message}</p>}
           <div className="border-t border-[var(--line)] pt-3">
             <button
@@ -158,7 +158,7 @@ function CoverStack({ ads, source, onSelect }: { ads: BoardAd[]; source: string;
             <span className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/60 to-transparent" />
             <span className="liquid-dark mono absolute left-1.5 top-1.5 rounded-full px-1.5 py-0.5 text-[9.5px]">#{i + 1}</span>
             <span className="absolute inset-x-2 bottom-1.5 text-left text-[12px] font-semibold tabular-nums text-white">
-              {rank === 'ctr' ? `${ad.metrics.ctr?.toFixed(2) ?? '–'} CTR` : `${formatCount(ad.metrics.views)} views`}
+              {formatMetric(rank, ad.metrics[rank])} {metricUnit(rank, ad.metrics[rank])}
             </span>
           </motion.button>
         );

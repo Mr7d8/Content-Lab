@@ -1,4 +1,4 @@
-import { fitsObjective, scannedAd, type Json, type ScannedAd, type Tables, type TablesInsert } from '@content-lab/core';
+import { fitsObjective, metaPageMatches, scannedAd, searchTerms, type Json, type ScannedAd, type Tables, type TablesInsert } from '@content-lab/core';
 
 type Board = Pick<Tables<'watchlists'>, 'id' | 'type' | 'value' | 'source' | 'objective'>;
 
@@ -9,6 +9,8 @@ export type IngestPlan = {
   ranks: Map<string, number>;
   // Ads left out because their objective is not the board's.
   offObjective: number;
+  // Meta advertiser boards: ads left out because another page ran them.
+  offPage: number;
 };
 
 // Turns one page of scraper rows into item rows. offset is the position of
@@ -19,11 +21,17 @@ export function planIngest(board: Board, rows: Record<string, unknown>[], offset
   const ads: ScannedAd[] = [];
   const ranks = new Map<string, number>();
   let offObjective = 0;
+  let offPage = 0;
+  const pages = board.source === 'meta_ad_library' && board.type === 'advertiser' ? searchTerms(board.value, board.type) : null;
   rows.forEach((row, i) => {
-    const ad = scannedAd(board.source, row);
+    const ad = scannedAd(board.source, row, new Date(now));
     if (!ad || ranks.has(ad.externalId)) return;
     if (!fitsObjective(board.objective, ad.objectiveSource)) {
       offObjective++;
+      return;
+    }
+    if (pages && !metaPageMatches(ad, pages)) {
+      offPage++;
       return;
     }
     ranks.set(ad.externalId, ad.rank ?? offset + i + 1);
@@ -43,7 +51,7 @@ export function planIngest(board: Board, rows: Record<string, unknown>[], offset
     scan_json: ad.raw as Json,
     scanned_at: now,
   }));
-  return { ads, items, ranks, offObjective };
+  return { ads, items, ranks, offObjective, offPage };
 }
 
 // Our final status for an Apify run that has ended.

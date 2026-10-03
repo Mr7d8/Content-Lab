@@ -7,7 +7,7 @@ import { useEffect, useState, useTransition } from 'react';
 import { createBoard } from '@/app/(app)/b/actions';
 import { CADENCES, cadenceText, OBJECTIVES, PERIODS, REGION_OPTIONS, regionLabel } from '@/lib/watchlists';
 
-type Source = 'tiktok_creative_center' | 'tiktok_organic';
+type Source = 'tiktok_creative_center' | 'tiktok_organic' | 'meta_ad_library';
 
 const SEARCHES: Record<Source, { type: string; label: string; placeholder: string }[]> = {
   tiktok_creative_center: [
@@ -21,7 +21,17 @@ const SEARCHES: Record<Source, { type: string; label: string; placeholder: strin
     { type: 'hashtag', label: 'Hashtags', placeholder: 'tiktokmaroc, maroc' },
     { type: 'account', label: 'Accounts', placeholder: 'jumia_ma, marjane' },
   ],
+  meta_ad_library: [
+    { type: 'keyword', label: 'Keywords', placeholder: 'youcan.shop, livraison gratuite, الدفع عند الاستلام' },
+    { type: 'advertiser', label: 'Facebook pages', placeholder: 'Jumia, Avito.ma, Electroplanet' },
+  ],
 };
+
+const SOURCES: { value: Source; label: string }[] = [
+  { value: 'meta_ad_library', label: 'Meta ads' },
+  { value: 'tiktok_creative_center', label: 'TikTok top ads' },
+  { value: 'tiktok_organic', label: 'Organic TikTok' },
+];
 
 function Segmented<T extends string | number>({ value, options, onChange, label }: { value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; label: string }) {
   return (
@@ -45,8 +55,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 // The New board dialog: what to watch, then the first scan starts right away.
 export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
-  const [source, setSource] = useState<Source>('tiktok_creative_center');
-  const [type, setType] = useState('industry');
+  const [source, setSource] = useState<Source>('meta_ad_library');
+  const [type, setType] = useState('keyword');
   const [value, setValue] = useState('');
   const [region, setRegion] = useState('MA');
   const [objective, setObjective] = useState<string>('purchase');
@@ -156,8 +166,13 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
                   setSource(s);
                   setType(SEARCHES[s][0]?.type ?? 'keyword');
                 }}
-                options={[{ value: 'tiktok_creative_center', label: 'Top ads (Creative Center)' }, { value: 'tiktok_organic', label: 'Organic TikTok' }]}
+                options={SOURCES}
               />
+              {source === 'meta_ad_library' && (
+                <p className="text-xs leading-snug text-sub">
+                  Video ads running now on Facebook and Instagram, from Meta&apos;s Ad Library. Meta shows no CTR or likes, so ads rank by how long they have run.
+                </p>
+              )}
             </Field>
 
             <Field label="Search">
@@ -177,7 +192,11 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
                     aria-label={search.label}
                     dir="auto"
                   />
-                  <p className="text-xs text-faint">Up to 10 terms, separated by commas. Each one is searched and the results are pooled.</p>
+                  <p className="text-xs text-faint">
+                    {source === 'meta_ad_library' && search.type === 'advertiser'
+                      ? 'Up to 10 page names, separated by commas. Known competitors are followed by their page; other names keep only ads from pages of that name.'
+                      : 'Up to 10 terms, separated by commas. Each one is searched and the results are pooled.'}
+                  </p>
                 </>
               ) : search.type === 'snowball' ? (
                 <p className="mt-1 text-xs text-sub">Searches for the advertisers found to be Moroccan by the checks, and the ones you marked Moroccan. It grows as you scan other Moroccan boards.</p>
@@ -220,7 +239,7 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
 
             <Field label={`Ads per scan · ${ads}`}>
               <input type="range" min={10} max={MAX_SCAN_ADS} step={10} value={ads} onChange={(e) => setAds(Number(e.target.value))} className="w-full accent-[var(--accent)]" aria-label="Ads per scan" />
-              <p className="text-xs text-faint">About ${estimateScan(ads).toFixed(2)} per scan. Decoding is separate and only when you ask.</p>
+              <p className="text-xs text-faint">About ${estimateScan(ads, source).toFixed(2)} per scan. Decoding is separate and only when you ask.</p>
             </Field>
 
             <Field label="Name (optional)">

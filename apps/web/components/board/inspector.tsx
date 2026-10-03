@@ -3,7 +3,7 @@
 import { DECODE_ESTIMATE_USD, labelText, sourceLabel, type BeatRole } from '@content-lab/core';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
-import { formatCount, type BoardAd } from '@/lib/board-view';
+import { axesFor, formatMetric, metricUnit, type BoardAd } from '@/lib/board-view';
 import { BEAT_COLORS } from '@/lib/colors';
 import { clock } from '@/lib/frame-view';
 import { Cover } from './cover';
@@ -15,12 +15,11 @@ const Sparkle = ({ size = 14 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 14 14" aria-hidden><path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7 5.6 5.6Z" fill="currentColor" /></svg>
 );
 
+// The ranking number, the second one, and the length: "0.42 CTR · 1.2k likes", "45 days · 3 versions".
 function statsFor(ad: BoardAd, source: string): { label: string; value: string }[] {
-  const m = ad.metrics;
-  const length = { label: 'Length', value: ad.durationS ? `${Math.round(ad.durationS)} s` : '–' };
-  return source === 'tiktok_organic'
-    ? [{ label: 'Views', value: formatCount(m.views) }, { label: 'Likes', value: formatCount(m.likes) }, length]
-    : [{ label: 'CTR', value: m.ctr === undefined ? '–' : m.ctr.toFixed(2) }, { label: 'Likes', value: formatCount(m.likes) }, length];
+  const { rank, other } = axesFor(source);
+  const length = { label: '', value: ad.durationS ? `${Math.round(ad.durationS)} s` : '–' };
+  return [{ label: metricUnit(rank, ad.metrics[rank]), value: formatMetric(rank, ad.metrics[rank]) }, { label: metricUnit(other, ad.metrics[other]), value: formatMetric(other, ad.metrics[other]) }, length];
 }
 
 // The ad as a full-bleed card: video or cover, with name, caption, numbers and
@@ -177,11 +176,11 @@ function MediaCard({
           </div>
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] tabular-nums text-white/70">
             {statsFor(ad, source).map((st, i) => (
-              <span key={st.label} className="flex items-center gap-2">
+              <span key={i} className="flex items-center gap-2">
                 {i > 0 && <span aria-hidden className="h-3 w-px bg-white/25" />}
                 <span>
                   <b className="font-semibold text-white">{st.value}</b>
-                  {st.label === 'Length' ? '' : ` ${st.label === 'CTR' ? 'CTR' : st.label.toLowerCase()}`}
+                  {st.label ? ` ${st.label}` : ''}
                 </span>
               </span>
             ))}

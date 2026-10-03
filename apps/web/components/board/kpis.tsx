@@ -1,9 +1,9 @@
 'use client';
 
 import { motion } from 'motion/react';
-import { formatCount } from '@/lib/board-view';
+import { axesFor, formatMetric, metricWord } from '@/lib/board-view';
 
-type Stats = { ads: number; decoded: number; formats: number; advertisers: number; medianRank: number | null; medianLikes: number | null };
+type Stats = { ads: number; decoded: number; formats: number; advertisers: number; medianRank: number | null; medianOther: number | null };
 
 function Kpi({ label, value, note }: { label: string; value: string; note: string }) {
   return (
@@ -19,6 +19,8 @@ function Kpi({ label, value, note }: { label: string; value: string; note: strin
 
 export function Kpis({ stats, source, decoding, cover }: { stats: Stats; source: string; decoding: number; cover: string | null }) {
   const organic = source === 'tiktok_organic';
+  const meta = source === 'meta_ad_library';
+  const { rank, other } = axesFor(source);
   const share = stats.ads ? stats.decoded / stats.ads : 0;
   return (
     <section aria-label="Board numbers" className="grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -48,13 +50,13 @@ export function Kpis({ stats, source, decoding, cover }: { stats: Stats; source:
         </div>
       </div>
       <Kpi label={organic ? 'Posts' : 'Ads'} value={String(stats.ads)} note="on this board" />
-      <Kpi label={organic ? 'Creators' : 'Advertisers'} value={String(stats.advertisers)} note={organic ? 'distinct accounts' : 'named by Creative Center'} />
+      <Kpi label={organic ? 'Creators' : 'Advertisers'} value={String(stats.advertisers)} note={organic ? 'distinct accounts' : meta ? 'Facebook pages' : 'named by Creative Center'} />
       <Kpi
-        label={organic ? 'Median views' : 'Median CTR'}
-        value={organic ? formatCount(stats.medianRank) : stats.medianRank === null ? '–' : stats.medianRank.toFixed(2)}
-        note={organic ? 'per post' : 'score from 0 to 1'}
+        label={`Median ${metricWord(rank)}`}
+        value={formatMetric(rank, stats.medianRank)}
+        note={organic ? 'per post' : meta ? 'since the ad started' : 'score from 0 to 1'}
       />
-      <Kpi label="Median likes" value={formatCount(stats.medianLikes)} note={organic ? 'per post' : 'per ad'} />
+      <Kpi label={`Median ${metricWord(other)}`} value={formatMetric(other, stats.medianOther)} note={organic ? 'per post' : meta ? 'of the same ad running' : 'per ad'} />
     </section>
   );
 }

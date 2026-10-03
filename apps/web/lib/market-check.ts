@@ -205,7 +205,7 @@ export async function checkBoard(admin: AdminClient, boardId: string, budgetMs =
     const { urls, costUsd } = await landingUrls(items).catch(() => ({ urls: new Map<string, string>(), costUsd: 0 }));
     const share = costUsd / items.length;
     const results = await mapLimit(items, 4, (item) => {
-      const url = urls.get(item.external_id) ?? str(obj(item.scan_json).landingPageUrl);
+      const url = urls.get(item.external_id) ?? str(obj(item.scan_json).landingPageUrl) ?? scannedAd(item.source, obj(item.scan_json))?.landingUrl ?? null;
       return checkItem(item, url, book, reader, share);
     });
 
