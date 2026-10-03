@@ -1,6 +1,6 @@
 import 'server-only';
-import { createHmac, timingSafeEqual } from 'node:crypto';
-import { estimateScan, scanBudget, scanInput, type TablesInsert } from '@content-lab/core';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { boardSearches, estimateScan, scanInput, type BoardSearch, type Json, type TablesInsert } from '@content-lab/core';
 import type { AdminClient } from './admin';
 import { FINISHED_RUN_STATUSES, getActorRun, getDatasetItems, startActorRun } from './apify';
 import { cacheCover } from './covers';
@@ -43,7 +43,7 @@ function siteUrl(): string | null {
   return production ? `https://${production}` : null;
 }
 
-export type StartScanResult = { ok: true; runId: string; already?: boolean } | { ok: false; message: string };
+export type StartScanResult = { ok: true; runIds: string[]; already?: boolean } | { ok: false; message: string };
 
 // Names of the advertisers marked Moroccan, newest first: what a snowball
 // board searches for. Only brand names, since Creative Center searches ad
@@ -54,66 +54,87 @@ async function followedAdvertisers(admin: AdminClient): Promise<string[]> {
   return (data ?? []).map((a) => a.name);
 }
 
-// Starts a scan of a board, under the monthly budget. One scan per board at a time.
+// Starts a scan of a board, under the monthly budget: one scraper run per
+// search (a combined board has several), started together under one batch.
+// One scan per board at a time.
 export async function startScan(admin: AdminClient, boardId: string, trigger: 'manual' | 'schedule'): Promise<StartScanResult> {
   const { data: board, error: boardError } = await admin.from('watchlists').select('*').eq('id', boardId).maybeSingle();
   if (boardError) return { ok: false, message: boardError.message };
   if (!board) return { ok: false, message: 'Board not found.' };
-  const actor = ACTORS[board.source as keyof typeof ACTORS];
-  if (!actor) return { ok: false, message: `Boards of source ${board.source} cannot be scanned yet.` };
+  const searches = boardSearches(board);
+  const missing = searches.find((s) => !ACTORS[s.source as keyof typeof ACTORS]);
+  if (missing) return { ok: false, message: `Boards of source ${missing.source} cannot be scanned yet.` };
 
   const recent = new Date(Date.now() - STALE_SCAN_MS).toISOString();
   const { data: open } = await admin.from('runs').select('id').eq('watchlist_id', board.id).eq('kind', 'scan')
-    .eq('status', 'running').gt('updated_at', recent).limit(1);
-  if (open?.[0]) return { ok: true, runId: open[0].id, already: true };
+    .eq('status', 'running').gt('updated_at', recent);
+  if (open?.length) return { ok: true, runIds: open.map((r) => r.id), already: true };
 
   const [{ data: settings }, { data: spend }] = await Promise.all([
     admin.from('app_settings').select('*').maybeSingle(),
     admin.rpc('month_spend_usd'),
   ]);
   if (!settings) return { ok: false, message: 'Settings are missing: run the database migrations.' };
-  let input: Record<string, unknown>;
+  let inputs: Record<string, unknown>[];
   try {
-    input = scanInput(board, board.type === 'snowball' ? { followed: await followedAdvertisers(admin) } : {});
+    const followed = searches.some((s) => s.type === 'snowball') ? await followedAdvertisers(admin) : [];
+    inputs = searches.map((s) => scanInput({ ...s, max_items: board.max_items }, s.type === 'snowball' ? { followed } : {}));
   } catch (e) {
     return { ok: false, message: (e as Error).message };
   }
 
-  const budget = scanBudget(settings, Number(spend ?? 0), board.max_items, board.source);
-  if (!budget.ok) {
+  // The whole scan must fit what is left of the month; each run may charge
+  // up to half again its share, never past the month.
+  const estimates = searches.map((s) => estimateScan(board.max_items, s.source));
+  const estimate = estimates.reduce((a, b) => a + b, 0);
+  const left = Math.max(0, Number(settings.monthly_spend_cap_usd) - Number(spend ?? 0));
+  if (estimate > left) {
+    const what = searches.length > 1 ? `This scan of ${searches.length} searches, ${board.max_items} ads each,` : `This scan of ${board.max_items} ads`;
     return {
       ok: false,
-      message: `This scan of ${board.max_items} ads needs about $${budget.estimate.toFixed(2)}, and $${budget.left.toFixed(2)} is left of this month's $${Number(settings.monthly_spend_cap_usd).toFixed(2)} cap. Raise the cap or scan fewer ads.`,
+      message: `${what} needs about $${estimate.toFixed(2)}, and $${left.toFixed(2)} is left of this month's $${Number(settings.monthly_spend_cap_usd).toFixed(2)} cap. Raise the cap or scan fewer ads.`,
     };
   }
-  const cap = budget.chargeCap;
 
   const now = new Date().toISOString();
-  const row: TablesInsert<'runs'> = {
-    source: board.source, watchlist_id: board.id, kind: 'scan', trigger, status: 'running', started_at: now,
-    items_requested: board.max_items, spend_cap_usd: cap, cost_estimate_usd: Number(budget.estimate.toFixed(4)),
-  };
-  const { data: run, error } = await admin.from('runs').insert(row).select('id').single();
-  if (error) return { ok: false, message: `Could not create the scan: ${error.message}` };
-
-  try {
-    const token = webhookToken(run.id);
-    const site = siteUrl();
-    const started = await startActorRun(actor(), input, {
-      token: apifyToken(),
-      timeoutS: SCAN_TIMEOUT_S,
-      maxItems: board.max_items,
-      maxTotalChargeUsd: cap,
-      webhookUrl: token && site ? `${site}/api/apify/webhook?run=${run.id}&token=${token}` : null,
-    });
-    await admin.from('runs').update({ worker_run_id: started.id, apify_dataset_id: started.datasetId }).eq('id', run.id);
-    await admin.from('watchlists').update({ last_swept_at: now }).eq('id', board.id);
-    return { ok: true, runId: run.id };
-  } catch (e) {
-    const message = (e as Error).message;
-    await admin.from('runs').update({ status: 'failed', error: message, finished_at: new Date().toISOString() }).eq('id', run.id);
-    return { ok: false, message };
+  const batch = searches.length > 1 ? randomUUID() : null;
+  const token = apifyToken();
+  const site = siteUrl();
+  const runIds: string[] = [];
+  const errors: string[] = [];
+  for (const [i, s] of searches.entries()) {
+    const own = estimates[i] as number;
+    const cap = Math.floor(Math.min(left * (own / estimate), own * 1.5) * 10000) / 10000;
+    const row: TablesInsert<'runs'> = {
+      source: s.source, watchlist_id: board.id, kind: 'scan', trigger, status: 'running', started_at: now,
+      items_requested: board.max_items, spend_cap_usd: cap, cost_estimate_usd: Number(own.toFixed(4)),
+      batch_id: batch, search_json: batch ? (s as unknown as Json) : null,
+    };
+    const { data: run, error } = await admin.from('runs').insert(row).select('id').single();
+    if (error) {
+      errors.push(`Could not create the scan: ${error.message}`);
+      continue;
+    }
+    try {
+      const hook = webhookToken(run.id);
+      const started = await startActorRun(ACTORS[s.source as keyof typeof ACTORS](), inputs[i], {
+        token,
+        timeoutS: SCAN_TIMEOUT_S,
+        maxItems: board.max_items,
+        maxTotalChargeUsd: cap,
+        webhookUrl: hook && site ? `${site}/api/apify/webhook?run=${run.id}&token=${hook}` : null,
+      });
+      await admin.from('runs').update({ worker_run_id: started.id, apify_dataset_id: started.datasetId }).eq('id', run.id);
+      runIds.push(run.id);
+    } catch (e) {
+      const message = (e as Error).message;
+      errors.push(message);
+      await admin.from('runs').update({ status: 'failed', error: message, finished_at: new Date().toISOString() }).eq('id', run.id);
+    }
   }
+  if (!runIds.length) return { ok: false, message: errors[0] ?? 'The scan did not start.' };
+  await admin.from('watchlists').update({ last_swept_at: now }).eq('id', board.id);
+  return { ok: true, runIds };
 }
 
 // synced counts the scraper's rows read so far, out of the requested ads.
@@ -127,8 +148,14 @@ export async function syncScan(admin: AdminClient, runId: string, budgetMs = 800
   if (!run) return { status: 'missing', synced: 0, requested: 0, added: 0, done: true, error: 'Scan not found' };
   const idle = { status: run.status, synced: run.synced_count, requested: run.items_requested, added: 0, done: run.status !== 'running', error: run.error, boardId: run.watchlist_id };
   if (run.kind !== 'scan' || run.status !== 'running' || !run.worker_run_id || !run.apify_dataset_id || !run.watchlist_id) return idle;
-  const { data: board } = await admin.from('watchlists').select('id, type, value, source, objective, moroccan_only').eq('id', run.watchlist_id).maybeSingle();
-  if (!board) return idle;
+  const { data: row } = await admin.from('watchlists').select('id, type, value, source, objective, moroccan_only').eq('id', run.watchlist_id).maybeSingle();
+  if (!row) return idle;
+  // On a board with several searches, the run's own search decides how its
+  // rows come in; the board's Moroccan switch still turns the gate off for all.
+  const search = run.search_json ? (run.search_json as unknown as BoardSearch) : null;
+  const board: IngestBoard = search
+    ? { id: row.id, type: search.type, value: search.value, source: search.source, objective: search.objective, moroccan_only: row.moroccan_only && search.moroccan_only }
+    : row;
 
   const token = apifyToken();
   const actorRun = await getActorRun(run.worker_run_id, token);

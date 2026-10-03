@@ -1,6 +1,5 @@
 'use client';
 
-import { sourceLabel } from '@content-lab/core';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
@@ -47,7 +46,7 @@ function BoardSwitcher({ boards, currentId, onNew }: { boards: BoardSummary[]; c
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{b.name}</span>
-                  <span className="block text-xs text-faint">{sourceLabel(b.source)}</span>
+                  <span className="block text-xs text-faint">{b.sources}</span>
                 </span>
                 <span className="mono tabular-nums text-sub">{b.ads}</span>
               </Link>

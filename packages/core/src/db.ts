@@ -538,6 +538,8 @@ export type Database = {
           kind: string;
           apify_dataset_id: string | null;
           synced_count: number;
+          batch_id: string | null;
+          search_json: Json | null;
         };
         Insert: {
           id?: string;
@@ -562,6 +564,8 @@ export type Database = {
           kind?: string;
           apify_dataset_id?: string | null;
           synced_count?: number;
+          batch_id?: string | null;
+          search_json?: Json | null;
         };
         Update: {
           id?: string;
@@ -586,6 +590,8 @@ export type Database = {
           kind?: string;
           apify_dataset_id?: string | null;
           synced_count?: number;
+          batch_id?: string | null;
+          search_json?: Json | null;
         };
         Relationships: [
           {
@@ -665,6 +671,7 @@ export type Database = {
           last_swept_at: string | null;
           period_days: number;
           moroccan_only: boolean;
+          searches: Json;
         };
         Insert: {
           id?: string;
@@ -683,6 +690,7 @@ export type Database = {
           last_swept_at?: string | null;
           period_days?: number;
           moroccan_only?: boolean;
+          searches?: Json;
         };
         Update: {
           id?: string;
@@ -701,6 +709,7 @@ export type Database = {
           last_swept_at?: string | null;
           period_days?: number;
           moroccan_only?: boolean;
+          searches?: Json;
         };
         Relationships: [];
       };

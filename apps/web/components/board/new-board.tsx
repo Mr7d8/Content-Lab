@@ -1,11 +1,11 @@
 'use client';
 
-import { estimateScan, labelText, MAX_SCAN_ADS, MOROCCO_PRESETS, searchTerms, termsLabel, type BoardPreset } from '@content-lab/core';
+import { estimateScan, labelText, MAX_SCAN_ADS, MOROCCO_PRESETS, type BoardPreset } from '@content-lab/core';
 import { AnimatePresence, motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
-import { createBoard } from '@/app/(app)/b/actions';
-import { CADENCES, cadenceText, OBJECTIVES, PERIODS, REGION_OPTIONS, regionLabel } from '@/lib/watchlists';
+import { createBoard, createCombinedBoard } from '@/app/(app)/b/actions';
+import { CADENCES, cadenceText, combinedBoardRow, OBJECTIVES, PERIODS, REGION_OPTIONS, regionLabel, searchLine, SOURCE_NAMES } from '@/lib/watchlists';
 
 type Source = 'tiktok_creative_center' | 'tiktok_organic' | 'meta_ad_library';
 
@@ -27,11 +27,7 @@ const SEARCHES: Record<Source, { type: string; label: string; placeholder: strin
   ],
 };
 
-const SOURCES: { value: Source; label: string }[] = [
-  { value: 'meta_ad_library', label: 'Meta ads' },
-  { value: 'tiktok_creative_center', label: 'TikTok top ads' },
-  { value: 'tiktok_organic', label: 'Organic TikTok' },
-];
+const SOURCES = (Object.keys(SOURCE_NAMES) as Source[]).map((value) => ({ value, label: SOURCE_NAMES[value] as string }));
 
 function Segmented<T extends string | number>({ value, options, onChange, label }: { value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; label: string }) {
   return (
@@ -41,30 +37,6 @@ function Segmented<T extends string | number>({ value, options, onChange, label 
       ))}
     </div>
   );
-}
-
-// A starter as the form the board is created from, with the settings shared
-// by every board made at once.
-function presetForm(p: BoardPreset, shared: { ads: number; cadence: string; period: number }): FormData {
-  const form = new FormData();
-  form.set('source', p.source);
-  form.set('type', p.type);
-  form.set('value', p.type === 'snowball' ? 'auto' : p.value);
-  form.set('moroccan_only', String(p.moroccanOnly));
-  form.set('region', p.region);
-  if (p.source === 'tiktok_creative_center' && p.objective) form.set('objective', p.objective);
-  form.set('period_days', String(shared.period));
-  form.set('max_items', String(shared.ads));
-  form.set('refresh_cadence', shared.cadence);
-  form.set('name', p.name);
-  return form;
-}
-
-// "Meta ads · youcan.shop, livraison gratuite +6 · Morocco"
-function presetLine(p: BoardPreset): string {
-  const source = SOURCES.find((s) => s.value === p.source)?.label ?? p.source;
-  const search = p.type === 'snowball' ? 'Follows the Moroccan advertisers found' : termsLabel(searchTerms(p.value, p.type));
-  return `${source} · ${search} · ${regionLabel(p.region)}`;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -89,7 +61,8 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
   const [cadence, setCadence] = useState<string>('manual');
   const [name, setName] = useState('');
   const [moroccanOnly, setMoroccanOnly] = useState(true);
-  // Starters picked: one fills the form below; several each become a board.
+  // Starters picked: one fills the form below; several make one board that
+  // runs all their searches.
   const [picked, setPicked] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -120,36 +93,34 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
     // One left: the form shows it, editable.
     const only = next.length === 1 ? MOROCCO_PRESETS.find((x) => x.id === next[0]) : undefined;
     if (only) usePreset(only);
+    // Several: a starter's name filled in earlier gives way to the board's own.
+    else if (next.length > 1 && MOROCCO_PRESETS.some((x) => x.name === name)) setName('');
   };
   const chosen = MOROCCO_PRESETS.filter((p) => picked.includes(p.id));
   const multi = chosen.length > 1;
+  const mixed = new Set(chosen.map((p) => (p.source === 'meta_ad_library' ? 'meta' : 'tiktok'))).size > 1;
   const estimate = multi ? chosen.reduce((sum, p) => sum + estimateScan(ads, p.source), 0) : estimateScan(ads, source);
+  const combined = multi ? combinedBoardRow(picked, { ads, cadence, name: '' }) : null;
+  const defaultName = combined?.ok ? combined.row.name : 'Filled in from the search and country';
 
-  // Several starters: one board each, made one after another, each scan started.
-  const submitMany = () =>
+  // Several starters: one board running each starter's search, then its first scan.
+  const submitCombined = () =>
     start(async () => {
-      const made: string[] = [];
-      const failed: string[] = [];
-      for (const p of chosen) {
-        const result = await createBoard(presetForm(p, { ads, cadence, period }));
-        if (result.ok && result.id) made.push(result.id);
-        else failed.push(`${p.label} (${result.ok ? 'not created' : result.message})`);
-      }
-      await Promise.all(made.map((id) => fetch(`/api/boards/${id}/scan`, { method: 'POST' }).catch(() => null)));
-      if (failed.length) {
-        setError(`${made.length ? `Created ${made.length}, scanning. ` : ''}Not created: ${failed.join('; ')}.`);
-        router.refresh();
+      const result = await createCombinedBoard(chosen.map((p) => p.id), { ads, cadence, name });
+      if (!result.ok || !result.id) {
+        setError(result.ok ? 'The board was not created.' : result.message);
         return;
       }
+      await fetch(`/api/boards/${result.id}/scan`, { method: 'POST' }).catch(() => null);
       onClose();
       setPicked([]);
-      router.push(`/b/${made[0]}`);
+      router.push(`/b/${result.id}`);
     });
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (multi) return submitMany();
+    if (multi) return submitCombined();
     const form = new FormData();
     form.set('source', source);
     form.set('type', search.type);
@@ -218,21 +189,24 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
               {chosen.length === 1 ? (
                 <p className="text-xs leading-snug text-sub">{chosen[0]?.description}</p>
               ) : !multi ? (
-                <p className="text-xs leading-snug text-faint">Pick one to fill the form, or several to make a board for each.</p>
+                <p className="text-xs leading-snug text-faint">Pick one to fill the form, or several to pool them in one board.</p>
               ) : null}
             </Field>
 
             {multi && (
-              <Field label={`${chosen.length} boards`}>
+              <Field label={`One board · ${chosen.length} searches`}>
                 <ul className="space-y-1.5">
                   {chosen.map((p) => (
                     <li key={p.id} className="rounded-[14px] bg-white/60 px-3 py-2 shadow-[var(--glass-rim)]">
                       <p className="text-[13.5px] font-semibold tracking-tight">{p.label}</p>
-                      <p className="truncate text-xs text-sub" dir="auto">{presetLine(p)}</p>
+                      <p className="truncate text-xs text-sub" dir="auto">{searchLine(p)}</p>
                     </li>
                   ))}
                 </ul>
-                <p className="text-xs text-faint">Each starter becomes its own board with its own search. The schedule and ads per scan below apply to all of them.</p>
+                <p className="text-xs text-faint">
+                  Each scan runs all {chosen.length} searches and pools their ads in this one board.
+                  {mixed ? ' Meta and TikTok ads rank differently, so a switch at the top shows one at a time.' : ''}
+                </p>
               </Field>
             )}
 
@@ -323,24 +297,22 @@ export function NewBoardDialog({ open, onClose }: { open: boolean; onClose: () =
               </label>
             )}
 
-            <Field label={`Ads per scan · ${ads}`}>
-              <input type="range" min={10} max={MAX_SCAN_ADS} step={10} value={ads} onChange={(e) => setAds(Number(e.target.value))} className="w-full accent-[var(--accent)]" aria-label="Ads per scan" />
+            <Field label={`${multi ? 'Ads per search' : 'Ads per scan'} · ${ads}`}>
+              <input type="range" min={10} max={MAX_SCAN_ADS} step={10} value={ads} onChange={(e) => setAds(Number(e.target.value))} className="w-full accent-[var(--accent)]" aria-label={multi ? 'Ads per search' : 'Ads per scan'} />
               <p className="text-xs text-faint">
-                About ${estimate.toFixed(2)} per scan{multi ? ` for the ${chosen.length} boards` : ''}. Decoding is separate and only when you ask.
+                About ${estimate.toFixed(2)} per scan{multi ? ` for the ${chosen.length} searches` : ''}. Decoding is separate and only when you ask.
               </p>
             </Field>
 
-            {!multi && (
-              <Field label="Name (optional)">
-                <input className="field" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} placeholder="Filled in from the search and country" dir="auto" />
-              </Field>
-            )}
+            <Field label="Name (optional)">
+              <input className="field" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} placeholder={defaultName} dir="auto" />
+            </Field>
 
             {error && <p className="text-sm text-red" role="alert">{error}</p>}
             <div className="flex items-center justify-end gap-2 pt-1">
               <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
               <button type="submit" className="btn-primary" disabled={pending || (!multi && needsValue && !value.trim())}>
-                {pending ? 'Creating…' : multi ? `Create ${chosen.length} boards and scan` : 'Create and scan'}
+                {pending ? 'Creating…' : 'Create and scan'}
               </button>
             </div>
           </motion.form>

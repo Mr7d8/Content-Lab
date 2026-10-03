@@ -4,6 +4,7 @@ import {
   joinTerms,
   MAX_SCAN_ADS,
   MAX_TERM_LENGTH,
+  MOROCCO_PRESETS,
   nextSweepAt,
   REGION_GROUPS,
   REGION_NAMES,
@@ -11,7 +12,9 @@ import {
   sourceLabel,
   termsLabel,
   WATCHLIST_TYPES,
+  type BoardSearch,
   type DiscoverySource,
+  type Json,
   type Tables,
   type TablesInsert,
 } from '@content-lab/core';
@@ -28,6 +31,13 @@ export const TYPE_LABELS: Record<string, string> = {
   hashtag: 'Hashtag',
   account: 'Account',
   snowball: 'Moroccan advertisers found',
+};
+
+// Sources as the team calls them, in the order offered.
+export const SOURCE_NAMES: Readonly<Record<string, string>> = {
+  meta_ad_library: 'Meta ads',
+  tiktok_creative_center: 'TikTok top ads',
+  tiktok_organic: 'Organic TikTok',
 };
 
 export const OBJECTIVES = ['app_install', 'purchase'] as const;
@@ -93,6 +103,54 @@ export function parseWatchlistForm(get: (name: string) => string | null): Parsed
   return {
     ok: true,
     row: { name, source, type, value, region, objective, refresh_cadence: cadence, max_items: maxItems, period_days: period, moroccan_only: moroccanOnly },
+  };
+}
+
+// One search as a line: "Meta ads · youcan.shop, livraison gratuite +6 · Morocco".
+export function searchLine(s: Pick<BoardSearch, 'source' | 'type' | 'value' | 'region'>): string {
+  const prefix = s.type === 'hashtag' ? '#' : s.type === 'account' ? '@' : '';
+  const search = s.type === 'snowball' ? 'Follows the Moroccan advertisers found' : termsLabel(searchTerms(s.value, s.type).map((t) => prefix + t));
+  return `${SOURCE_NAMES[s.source] ?? sourceLabel(s.source)} · ${search} · ${regionLabel(s.region)}`;
+}
+
+// One board made from several starters: it runs each starter's search and
+// pools the ads. Its value lists the starters, so the same set is made once.
+export function combinedBoardRow(ids: string[], shared: { ads: number; cadence: string; name: string }): ParsedWatchlist {
+  const presets = MOROCCO_PRESETS.filter((p) => ids.includes(p.id));
+  if (presets.length < 2) return { ok: false, message: 'Pick at least two starters.' };
+  if (!(CADENCES as readonly string[]).includes(shared.cadence)) return { ok: false, message: 'Pick how often to refresh.' };
+  if (!Number.isInteger(shared.ads) || shared.ads < 1 || shared.ads > MAX_SCAN_ADS) return { ok: false, message: `Ads per search must be between 1 and ${MAX_SCAN_ADS}.` };
+  const searches: BoardSearch[] = presets.map((p) => ({
+    source: p.source,
+    type: p.type,
+    value: p.type === 'snowball' ? 'auto' : p.value,
+    region: p.region || null,
+    objective: p.source === 'tiktok_creative_center' ? p.objective : null,
+    period_days: 30,
+    moroccan_only: p.moroccanOnly,
+  }));
+  const first = presets[0] as (typeof presets)[number];
+  const regions = new Set(searches.map((s) => s.region));
+  const region = regions.size === 1 ? (searches[0]?.region ?? null) : null;
+  // "Morocco on Meta and TikTok"
+  const platforms = [...new Set(presets.map((p) => (p.source === 'meta_ad_library' ? 'Meta' : 'TikTok')))].join(' and ');
+  const name = shared.name.trim().slice(0, 80) || (region ? `${regionLabel(region)} on ${platforms}` : `${platforms} ads`);
+  return {
+    ok: true,
+    row: {
+      name,
+      source: first.source,
+      type: 'combined',
+      value: presets.map((p) => p.id).sort().join(','),
+      region,
+      objective: null,
+      refresh_cadence: shared.cadence,
+      max_items: shared.ads,
+      period_days: 30,
+      // The board's switch; each search keeps its own (competitors' own pages are not checked).
+      moroccan_only: searches.some((s) => s.moroccan_only),
+      searches: searches as unknown as Json,
+    },
   };
 }
 

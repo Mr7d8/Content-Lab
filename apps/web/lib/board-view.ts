@@ -1,4 +1,4 @@
-import { checkMarket, labelText, REGION_NAMES, scanMediaExpired, scannedAd, scanVideoUrl, searchTerms, sourceLabel, termsLabel, type Breakdown, type MarketCheck, type MarketVerdict, type Tables } from '@content-lab/core';
+import { boardSearches, boardSourcesLabel, checkMarket, labelText, REGION_NAMES, scanMediaExpired, scannedAd, scanVideoUrl, searchTerms, sourceLabel, termsLabel, type Breakdown, type Json, type MarketCheck, type MarketVerdict, type Tables } from '@content-lab/core';
 import { readStoredMarket, type GateStatus } from './gate';
 
 // Everything the board shows, computed from database rows. Pure, so the
@@ -220,7 +220,11 @@ const SEARCH_WORD: Record<string, [string, string]> = {
 };
 
 // The micro label over the board title: where the ads come from.
-export function boardEyebrow(board: Pick<Tables<'watchlists'>, 'source' | 'type' | 'value' | 'region' | 'objective' | 'period_days'>): string[] {
+export function boardEyebrow(board: Pick<Tables<'watchlists'>, 'source' | 'type' | 'value' | 'region' | 'objective' | 'period_days'> & { searches?: Json }): string[] {
+  if (board.type === 'combined') {
+    const n = boardSearches(board).length;
+    return [boardSourcesLabel(board), `${n} searches`, board.region ? (REGION_NAMES[board.region] ?? board.region) : 'Any region'];
+  }
   const parts = [sourceLabel(board.source)];
   if (board.type === 'snowball') parts.push('Following Moroccan advertisers');
   else if (board.type !== 'industry') {
@@ -310,10 +314,28 @@ export function spreadPoints(
   return out;
 }
 
+// One scan from its runs: a board with several searches runs one scraper
+// each, started together. Running while any runs; failed only when all did.
+export type ScanRun = { id: string; status: string; synced_count: number; items_requested: number; error: string | null; started_at: string | null; finished_at: string | null };
+
+export function scanOfRuns(runs: ScanRun[]) {
+  const status = runs.some((r) => r.status === 'running') ? 'running' : runs.some((r) => r.status === 'completed') ? 'completed' : 'failed';
+  const times = (pick: (r: ScanRun) => string | null) => runs.map(pick).filter((t): t is string => !!t).sort();
+  return {
+    runIds: runs.map((r) => r.id),
+    status,
+    synced: runs.reduce((n, r) => n + r.synced_count, 0),
+    requested: runs.reduce((n, r) => n + r.items_requested, 0),
+    error: status === 'failed' ? (runs.find((r) => r.error)?.error ?? null) : null,
+    startedAt: times((r) => r.started_at)[0] ?? null,
+    finishedAt: status === 'running' ? null : (times((r) => r.finished_at).at(-1) ?? null),
+  };
+}
+
 // What a board was showing, remembered per board in the browser so a reload
 // comes back to it: the selected ad, the two toggles, the format filter and
 // the picked ads. Anything unreadable falls back to the defaults.
-export type SavedView = { selected: string | null; withOlder: boolean; showLeftOut: boolean; format: string | null; picked: string[] };
+export type SavedView = { selected: string | null; withOlder: boolean; showLeftOut: boolean; format: string | null; picked: string[]; source: string | null };
 
 export function parseSavedView(raw: string | null): SavedView | null {
   if (!raw) return null;
@@ -331,6 +353,7 @@ export function parseSavedView(raw: string | null): SavedView | null {
     showLeftOut: o.showLeftOut === true,
     format: typeof o.format === 'string' ? o.format : null,
     picked: Array.isArray(o.picked) ? o.picked.filter((id): id is string => typeof id === 'string') : [],
+    source: typeof o.source === 'string' ? o.source : null,
   };
 }
 

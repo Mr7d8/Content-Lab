@@ -1,6 +1,7 @@
 'use client';
 
-import { DECODE_ESTIMATE_USD } from '@content-lab/core';
+import { boardSources, DECODE_ESTIMATE_USD } from '@content-lab/core';
+import { SOURCE_NAMES } from '@/lib/watchlists';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { glowInk } from '@/lib/ambient';
@@ -82,17 +83,26 @@ function writeView(boardId: string, view: SavedView) {
 
 export function Board({ data }: { data: BoardData }) {
   const { board } = data;
-  const source = board.source;
+  // A board pooling Meta and TikTok searches shows one source at a time:
+  // their numbers differ (days running against CTR), so they never share a chart.
+  const sources = useMemo(() => boardSources(board), [board]);
+  const [sourceChoice, setSource] = useState<string | null>(null);
+  const source = sourceChoice && sources.includes(sourceChoice) ? sourceChoice : (sources[0] as string);
+  const boardAds = useMemo(() => (sources.length > 1 ? data.ads.filter((a) => a.source === source) : data.ads), [data.ads, source, sources.length]);
+  const gate = useMemo(
+    () => (sources.length > 1 ? { pending: boardAds.filter((a) => a.gate === 'pending').length, rejected: boardAds.filter((a) => a.gate === 'rejected').length } : data.gate),
+    [sources.length, boardAds, data.gate],
+  );
   const [creating, setCreating] = useState(false);
   const { view: scan, start: startScan } = useScan(board.id, data.scan);
   const queue = useDecodeQueue();
   const { active, errors, finished } = queue;
   // The latest scan by default; ads from earlier scans on request.
   const [withOlder, setWithOlder] = useState(false);
-  const { current, older } = useMemo(() => splitByScan(data.ads, data.cutoff), [data.ads, data.cutoff]);
+  const { current, older } = useMemo(() => splitByScan(boardAds, data.cutoff), [boardAds, data.cutoff]);
   // A Moroccan board shows the ads its gate let in, unless asked for the rest.
   const [showLeftOut, setShowLeftOut] = useState(false);
-  const inScan = withOlder ? data.ads : current;
+  const inScan = withOlder ? boardAds : current;
   const scoped = useMemo(() => (showLeftOut ? inScan : inScan.filter((a) => (a.gate ?? 'shown') === 'shown')), [inScan, showLeftOut]);
   const [marketChoice, setMarket] = useMarketFilter();
   const counts = useMemo(() => marketCounts(scoped), [scoped]);
@@ -125,14 +135,15 @@ export function Board({ data }: { data: BoardData }) {
     setShowLeftOut(v?.showLeftOut ?? false);
     setFormat(v?.format ?? null);
     setPicked(new Set((v?.picked ?? []).filter((id) => known.has(id))));
+    setSource(v?.source ?? null);
     setRestored(board.id);
     // Only when the board changes, not on every refresh of its ads.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board.id]);
   useEffect(() => {
     if (restored !== board.id) return;
-    writeView(board.id, { selected: selectedId, withOlder, showLeftOut, format: formatChoice, picked: [...picked] });
-  }, [restored, board.id, selectedId, withOlder, showLeftOut, formatChoice, picked]);
+    writeView(board.id, { selected: selectedId, withOlder, showLeftOut, format: formatChoice, picked: [...picked], source: sourceChoice });
+  }, [restored, board.id, selectedId, withOlder, showLeftOut, formatChoice, picked, sourceChoice]);
   const inspector = useRef<HTMLDivElement>(null);
   // The inspector's video: the frame strip under the map follows and seeks it.
   const video = useRef<HTMLVideoElement | null>(null);
@@ -173,8 +184,21 @@ export function Board({ data }: { data: BoardData }) {
             top={ads.slice(0, 3)}
             onSelect={select}
             market={<MarketFilter value={market} counts={counts} onChange={setMarket} />}
+            source={source}
+            sources={sources.length > 1 ? (
+              <div className="flex min-w-0 max-w-full items-center gap-2.5">
+                <p className="mono shrink-0 text-faint">Source</p>
+                <div className="segmented no-scrollbar max-w-full overflow-x-auto" role="group" aria-label="Show ads from">
+                  {sources.map((s) => (
+                    <button key={s} type="button" aria-pressed={s === source} onClick={() => setSource(s)}>
+                      {SOURCE_NAMES[s] ?? s} <span className="tabular-nums opacity-55">{data.ads.filter((a) => a.source === s && (a.gate ?? 'shown') === 'shown').length}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : undefined}
           />
-          {board.moroccan_only && <GateBar boardId={board.id} gate={data.gate} ads={inScan} showLeftOut={showLeftOut} onToggle={() => setShowLeftOut((v) => !v)} />}
+          {board.moroccan_only && <GateBar boardId={board.id} gate={gate} ads={inScan} showLeftOut={showLeftOut} onToggle={() => setShowLeftOut((v) => !v)} />}
         </div>
         <Kpis stats={stats} source={source} decoding={queue.active.size} cover={ads[0]?.cover ?? null} />
 
