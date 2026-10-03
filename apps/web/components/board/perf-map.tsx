@@ -3,21 +3,23 @@
 import { scaleLinear, scaleLog } from 'd3-scale';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { axesFor, formatCount, formatMetric, median, METRIC_NAME, spreadPoints, type BoardAd, type MetricKey } from '@/lib/board-view';
+import { axesFor, formatMetric, formatTick, logTicks, median, METRIC_MEANS, METRIC_NAME, metricUnit, spreadPoints, type BoardAd, type MetricKey } from '@/lib/board-view';
 import { covers } from '@/lib/cover-loader';
 import { Cover } from './cover';
 import { Glow, ProgressiveBlur } from './glass';
 
-
-function logTicks(domain: [number, number]): number[] {
-  const out: number[] = [];
-  for (let t = 10 ** Math.ceil(Math.log10(domain[0])); t <= domain[1]; t *= 10) out.push(t);
-  return out;
-}
-
 const fmt = (axis: MetricKey, v: number | undefined) => formatMetric(axis, v);
-// The corner where the strongest ads sit.
-const BEST_CORNER: Partial<Record<MetricKey, string>> = { ctr: 'HIGH CTR, MANY LIKES', likes: 'MANY VIEWS, MANY LIKES', days: 'LONG RUNNING, MANY VERSIONS' };
+// The corner where the strongest ads sit, by the map's vertical number.
+const BEST_CORNER: Partial<Record<MetricKey, string>> = { ctr: 'high CTR, many likes', likes: 'many views, many likes', days: 'long running, many versions' };
+
+// The decoded mark, as on the Top ads tiles.
+function DecodedBadge({ size }: { size: number }) {
+  return (
+    <span className="grid shrink-0 place-items-center rounded-full bg-accent text-white shadow-[0_0_0_1.5px_rgba(255,255,255,.95)]" style={{ width: size, height: size }} aria-hidden>
+      <svg width={size * 0.55} height={size * 0.55} viewBox="0 0 14 14"><path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7 5.6 5.6Z" fill="currentColor" /></svg>
+    </span>
+  );
+}
 
 type Rect = { x0: number; y0: number; x1: number; y1: number };
 
@@ -44,9 +46,9 @@ function tileSpot(id: string, list: DOMRect, tileW: number): { cx: number; cy: n
   return { cx: clamp(r.left + r.width / 2, list.left, list.right), cy: clamp(r.top + r.height / 2, list.top, list.bottom), w: r.width };
 }
 
-// Every ad as its cover, placed by its two numbers. Decoded ads wear a blue
-// ring;
-// a format filter dims the rest. Drag across the map to pick ads to decode.
+// Every ad as its cover, placed by its two numbers. Decoded ads carry the
+// decode mark; a format filter dims the rest. Drag across the map to pick ads
+// to decode. The key under the map says what each mark means.
 export function PerfMap({
   ads,
   source,
@@ -83,7 +85,7 @@ export function PerfMap({
   const narrow = W < 560;
   const H = narrow ? 380 : 500;
   const T = narrow ? { w: 22, h: 39 } : { w: 28, h: 50 };
-  const M = { top: 28, right: 18, bottom: 34, left: narrow ? 36 : 44 };
+  const M = { top: 30, right: 18, bottom: 36, left: narrow ? 38 : 46 };
 
   const plotted = useMemo(
     () => ads.filter((a) => a.metrics[axes.x] !== undefined && a.metrics[axes.y] !== undefined),
@@ -104,11 +106,11 @@ export function PerfMap({
       const yDomain: [number, number] = [lo / 1.6, Math.max(...ys, lo * 10) * 1.6];
       const s = scaleLog().domain(yDomain).range(inner);
       y = (v: number) => s(Math.max(1, v));
-      yTicks = logTicks(yDomain);
+      yTicks = logTicks(yDomain, narrow ? 5 : 7);
     } else {
       const s = scaleLinear().domain([0, Math.max(1, ...ys)]).range(inner).nice();
       y = s;
-      yTicks = s.ticks(4);
+      yTicks = s.ticks(narrow ? 3 : 4);
     }
     const placed = spreadPoints(
       plotted.map((a) => ({ id: a.id, x: x(Math.max(1, a.metrics[axes.x] as number)), y: y(a.metrics[axes.y] as number) })),
@@ -117,7 +119,7 @@ export function PerfMap({
       { x0: M.left + T.w / 2, x1: W - M.right - T.w / 2, y0: M.top + T.h / 2, y1: H - M.bottom - T.h / 2 },
       narrow ? 10 : 16,
     );
-    const ticks = logTicks(xDomain);
+    const ticks = logTicks(xDomain, narrow ? 5 : 8);
     return {
       x,
       y,
@@ -210,20 +212,21 @@ export function PerfMap({
 
   const hoveredAd = hovered ? plotted.find((a) => a.id === hovered) : undefined;
   const hp = hovered ? geometry.at.get(hovered) : undefined;
-  const decoded = ads.some((a) => a.decode.status === 'done');
+  const noun = source === 'tiktok_organic' ? 'post' : 'ad';
+
+  // The typical ad's two numbers, marked on the axes where the dashed lines
+  // meet them; tick labels too close to a mark give way.
+  const mono = { fontSize: 10, fontFamily: 'var(--font-mono)' } as const;
+  const pill = (text: string) => text.length * 6.1 + 12;
+  const yMark = geometry.my !== null ? { at: geometry.y(geometry.my), text: fmt(axes.y, geometry.my) } : null;
+  const xMark = geometry.mx !== null ? { at: geometry.x(geometry.mx), text: fmt(axes.x, geometry.mx) } : null;
+  const corner = BEST_CORNER[axes.y];
 
   return (
     <div className="panel min-w-0 p-4">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="mr-auto">
-          <p className="mono text-faint">Performance map</p>
-          <p className="mt-0.5 text-sm font-medium">{METRIC_NAME[axes.y]} against {METRIC_NAME[axes.x].toLowerCase()}, every {source === 'tiktok_organic' ? 'post' : 'ad'}</p>
-        </div>
-        <div className="mono flex items-center gap-3 text-faint">
-          <span className="flex items-center gap-1.5"><span className="h-3.5 w-2 rounded-[3px] bg-[linear-gradient(160deg,#ffb36b,#ff5e8a)] shadow-[0_0_0_1.5px_var(--accent)]" />Decoded</span>
-          <span className="flex items-center gap-1.5"><span className="h-3.5 w-2 rounded-[3px] bg-[linear-gradient(160deg,#7fd6ff,#7b8cff)] shadow-[0_0_0_1.5px_#fff,0_1px_3px_rgba(0,0,0,.2)]" />Not yet</span>
-          {!touch && <span className="hidden sm:inline">Drag to select</span>}
-        </div>
+      <div>
+        <p className="mono text-faint">Performance map</p>
+        <p className="mt-0.5 text-sm font-medium">{METRIC_NAME[axes.y]} against {METRIC_NAME[axes.x].toLowerCase()}, every {noun}</p>
       </div>
 
       <div
@@ -240,40 +243,47 @@ export function PerfMap({
           {geometry.yTicks.map((t) => (
             <g key={`y${t}`}>
               <line x1={M.left} x2={W - M.right} y1={geometry.y(t)} y2={geometry.y(t)} stroke="var(--line)" />
-              <text x={M.left - 8} y={geometry.y(t)} dy="0.32em" textAnchor="end" fontSize={10} fontFamily="var(--font-mono)" fill="var(--faint)">
-                {axes.y === 'ctr' ? t.toFixed(2).replace(/\.?0+$/, '') || '0' : formatCount(t)}
-              </text>
+              {!(yMark && Math.abs(geometry.y(t) - yMark.at) < 14) && (
+                <text x={M.left - 8} y={geometry.y(t)} dy="0.32em" textAnchor="end" {...mono} fill="var(--faint)">{formatTick(axes.y, t)}</text>
+              )}
             </g>
           ))}
           {geometry.xTicks.map((t) => (
             <g key={`x${t}`}>
               <line x1={geometry.x(t)} x2={geometry.x(t)} y1={M.top} y2={H - M.bottom} stroke="var(--line)" />
-              <text x={geometry.x(t)} y={H - M.bottom + 16} textAnchor="middle" fontSize={10} fontFamily="var(--font-mono)" fill="var(--faint)">{formatCount(t)}</text>
+              {!(xMark && Math.abs(geometry.x(t) - xMark.at) < pill(xMark.text) / 2 + 10) && (
+                <text x={geometry.x(t)} y={H - M.bottom + 16} textAnchor="middle" {...mono} fill="var(--faint)">{formatTick(axes.x, t)}</text>
+              )}
             </g>
           ))}
-          {geometry.mx !== null && (
-            <>
-              <line x1={geometry.x(geometry.mx)} x2={geometry.x(geometry.mx)} y1={M.top} y2={H - M.bottom} stroke="var(--faint)" strokeDasharray="3 4" />
-              <text x={geometry.x(geometry.mx) + 5} y={H - M.bottom - 6} fontSize={9.5} fontFamily="var(--font-mono)" fill="var(--faint)">
-                MEDIAN {fmt(axes.x, geometry.mx)}
-              </text>
-            </>
+          {xMark && (
+            <g>
+              <line x1={xMark.at} x2={xMark.at} y1={M.top} y2={H - M.bottom} stroke="var(--faint)" strokeDasharray="3 4" />
+              <rect x={xMark.at - pill(xMark.text) / 2} y={H - M.bottom + 6} width={pill(xMark.text)} height={16} rx={8} fill="#fff" stroke="var(--faint)" strokeDasharray="2 2" />
+              <text x={xMark.at} y={H - M.bottom + 14} dy="0.34em" textAnchor="middle" {...mono} fontWeight={600} fill="var(--sub)">{xMark.text}</text>
+            </g>
           )}
-          {geometry.my !== null && (
-            <>
-              <line x1={M.left} x2={W - M.right} y1={geometry.y(geometry.my)} y2={geometry.y(geometry.my)} stroke="var(--faint)" strokeDasharray="3 4" />
-              <text x={W - M.right - 6} y={geometry.y(geometry.my) - 6} textAnchor="end" fontSize={9.5} fontFamily="var(--font-mono)" fill="var(--faint)">
-                MEDIAN {fmt(axes.y, geometry.my)}
-              </text>
-            </>
+          {yMark && (
+            <g>
+              <line x1={M.left} x2={W - M.right} y1={yMark.at} y2={yMark.at} stroke="var(--faint)" strokeDasharray="3 4" />
+              <rect x={M.left - 4 - pill(yMark.text)} y={yMark.at - 8} width={pill(yMark.text)} height={16} rx={8} fill="#fff" stroke="var(--faint)" strokeDasharray="2 2" />
+              <text x={M.left - 10} y={yMark.at} dy="0.34em" textAnchor="end" {...mono} fontWeight={600} fill="var(--sub)">{yMark.text}</text>
+            </g>
           )}
-          <text x={M.left} y={M.top - 12} fontSize={9.5} fontFamily="var(--font-mono)" fill="var(--sub)" letterSpacing="0.06em">↑ {METRIC_NAME[axes.y].toUpperCase()}</text>
-          <text x={W - M.right} y={H - 4} textAnchor="end" fontSize={9.5} fontFamily="var(--font-mono)" fill="var(--sub)" letterSpacing="0.06em">
-            {METRIC_NAME[axes.x].toUpperCase()}, LOG SCALE →
+          <text x={M.left} y={M.top - 12} fontSize={9.5} fontFamily="var(--font-mono)" fill="var(--sub)" letterSpacing="0.06em">
+            ↑ {METRIC_NAME[axes.y].toUpperCase()}
+            {!narrow && <tspan dx={8} letterSpacing="0" fill="var(--faint)" fontSize={11} style={{ fontFamily: 'var(--font-sans)' }}>{METRIC_MEANS[axes.y]}</tspan>}
           </text>
-          <text x={W - M.right - 10} y={M.top + 16} textAnchor="end" fontSize={9.5} fontFamily="var(--font-mono)" fill="var(--faint)" letterSpacing="0.06em">
-            {BEST_CORNER[axes.y] ?? ''}
+          <text x={W - M.right} y={H - 3} textAnchor="end" fontSize={9.5} fontFamily="var(--font-mono)" fill="var(--sub)" letterSpacing="0.06em">
+            {!narrow && <tspan letterSpacing="0" fill="var(--faint)" fontSize={11} style={{ fontFamily: 'var(--font-sans)' }}>{METRIC_MEANS[axes.x]}</tspan>}
+            <tspan dx={narrow ? 0 : 8}>{METRIC_NAME[axes.x].toUpperCase()} →</tspan>
           </text>
+          {corner && (
+            <text x={W - M.right - 12} y={M.top + 18} textAnchor="end" fontSize={9.5} fontFamily="var(--font-mono)" fill="var(--sub)" letterSpacing="0.06em">
+              STRONGEST ↗
+              <tspan x={W - M.right - 12} dy={14} letterSpacing="0" fill="var(--faint)" fontSize={11} style={{ fontFamily: 'var(--font-sans)' }}>{corner}</tspan>
+            </text>
+          )}
         </svg>
 
         {plotted.map((ad) => {
@@ -323,12 +333,15 @@ export function PerfMap({
                     ? 'shadow-[0_0_0_2px_#fff,0_0_0_4px_var(--accent),0_8px_20px_rgba(10,132,255,.45)]'
                     : isPicked
                       ? 'shadow-[0_0_0_2px_#fff,0_0_0_3.5px_var(--accent)]'
-                      : done
-                        ? 'shadow-[0_0_0_2px_var(--accent),0_3px_8px_rgba(0,0,0,.2)]'
-                        : 'shadow-[0_0_0_1.5px_#fff,0_3px_8px_rgba(0,0,0,.2)]'
+                      : 'shadow-[0_0_0_1.5px_#fff,0_3px_8px_rgba(0,0,0,.2)]'
                 }`}
               >
                 <Cover ad={ad} className="h-full w-full" />
+                {done && (
+                  <span className="absolute right-[2px] top-[2px]">
+                    <DecodedBadge size={narrow ? 9 : 11} />
+                  </span>
+                )}
                 {ad.decode.status === 'running' && <span className="shimmer absolute inset-0 rounded-none opacity-80" />}
               </motion.span>
             </motion.button>
@@ -378,10 +391,34 @@ export function PerfMap({
           </div>
         )}
       </div>
-      <p className="mt-2 text-xs text-faint">
-        {decoded ? 'A blue ring marks a decoded ad. ' : 'Decoded ads get a blue ring. '}
-        {missing > 0 ? `${missing} ${missing === 1 ? 'ad has' : 'ads have'} no numbers and stay off the map.` : ''}
-      </p>
+      {/* The key: what the marks on the map mean. */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-sub">
+        <span className="flex items-center gap-1.5">
+          <DecodedBadge size={14} />
+          Decoded
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-[18px] w-[10px] rounded-[3px] bg-[linear-gradient(160deg,#e3e6ea,#b7bec8)] shadow-[0_0_0_1.5px_#fff,0_1px_3px_rgba(0,0,0,.25)]" aria-hidden />
+          Not decoded yet
+        </span>
+        {xMark && yMark && geometry.mx !== null && geometry.my !== null && (
+          <span className="flex items-center gap-1.5">
+            <svg width="18" height="4" aria-hidden><line x1="0" x2="18" y1="2" y2="2" stroke="var(--faint)" strokeWidth="1.5" strokeDasharray="3 3" /></svg>
+            Typical {noun}: {yMark.text} {metricUnit(axes.y, geometry.my)}, {xMark.text} {metricUnit(axes.x, geometry.mx)}
+          </span>
+        )}
+        {!touch && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-3 w-4 rounded-[3px] border border-dashed border-accent bg-accent/10" aria-hidden />
+            Drag a box around {noun}s to decode them together
+          </span>
+        )}
+        {missing > 0 && (
+          <span className="text-faint">
+            {missing} {missing === 1 ? `${noun} has` : `${noun}s have`} no numbers, so {missing === 1 ? 'it is' : 'they are'} not on the map
+          </span>
+        )}
+      </div>
     </div>
   );
 }

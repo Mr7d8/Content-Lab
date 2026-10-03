@@ -12,6 +12,8 @@ import {
   groupAds,
   lengthBucket,
   marketCounts,
+  formatTick,
+  logTicks,
   parseSavedView,
   rankAds,
   scanOfRuns,
@@ -290,5 +292,20 @@ describe('scanOfRuns', () => {
   it('completes when one search worked, and fails only when every one did', () => {
     expect(scanOfRuns([run('a', 'completed', 80), run('b', 'failed', 0, { error: 'The scraper failed' })])).toMatchObject({ status: 'completed', error: null, finishedAt: '2026-10-03T01:02:00Z' });
     expect(scanOfRuns([run('a', 'failed', 0, { error: 'The scraper failed' }), run('b', 'failed', 0)])).toMatchObject({ status: 'failed', error: 'The scraper failed' });
+  });
+});
+
+describe('map ticks', () => {
+  it('marks 1, 2 and 5 of each power of ten, or only the powers when too many', () => {
+    expect(logTicks([0.625, 32])).toEqual([1, 2, 5, 10, 20]);
+    expect(logTicks([3, 160])).toEqual([5, 10, 20, 50, 100]);
+    expect(logTicks([0.6, 2_000_000])).toEqual([1, 10, 100, 1000, 10_000, 100_000, 1_000_000]);
+  });
+
+  it('writes whole numbers in full up to 9,999', () => {
+    expect(formatTick('days', 1000)).toBe('1,000');
+    expect(formatTick('likes', 25_000)).toBe('25k');
+    expect(formatTick('ctr', 0.5)).toBe('0.5');
+    expect(formatTick('ctr', 0)).toBe('0');
   });
 });

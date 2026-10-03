@@ -132,6 +132,33 @@ export const metricWord = (key: MetricKey): string => (key === 'ctr' ? 'CTR' : M
 export const formatMetric = (key: MetricKey, v: number | null | undefined): string =>
   v === null || v === undefined ? '–' : key === 'ctr' ? v.toFixed(2) : key === 'days' ? String(Math.round(v)) : formatCount(v);
 
+// What each number means, in a few words, for the map's axes.
+export const METRIC_MEANS: Record<MetricKey, string> = {
+  ctr: 'TikTok\'s click-through score',
+  likes: 'likes it got',
+  views: 'times it was played',
+  days: 'how long the ad has been live',
+  versions: 'copies of the same ad running at once',
+};
+
+// Log scale ticks at 1, 2 and 5 of each power of ten, so the uneven spacing
+// reads on its own; only the powers of ten when that makes too many.
+export function logTicks(domain: [number, number], most = 8): number[] {
+  const steps = (ms: number[]) => {
+    const out: number[] = [];
+    for (let p = 10 ** Math.floor(Math.log10(domain[0])); p <= domain[1]; p *= 10) {
+      for (const m of ms) if (m * p >= domain[0] && m * p <= domain[1]) out.push(m * p);
+    }
+    return out;
+  };
+  const fine = steps([1, 2, 5]);
+  return fine.length <= most ? fine : steps([1]);
+}
+
+// An axis tick: whole numbers in full up to 9,999 ("1,000", not "1.0k").
+export const formatTick = (key: MetricKey, v: number): string =>
+  key === 'ctr' ? v.toFixed(2).replace(/\.?0+$/, '') || '0' : v < 10_000 ? Math.round(v).toLocaleString('en-US') : formatCount(v);
+
 // Which numbers the board plots (x on a log scale), ranks by, and shows
 // second (other).
 export type Axes = { x: MetricKey; y: MetricKey; yLog: boolean; rank: MetricKey; other: MetricKey };
