@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { BoardAd } from '@/lib/board-view';
+import { covers } from '@/lib/cover-loader';
 
 // A stable hue per ad, so a missing cover still has its own color.
 function hue(id: string): number {
@@ -38,7 +39,12 @@ export function Cover({ ad, className = '' }: { ad: BoardAd; className?: string 
       decoding="async"
       draggable={false}
       referrerPolicy="no-referrer"
-      onError={() => setBroken(ad.cover)}
+      // Shown here, so the map can fly it in without fetching it again.
+      onLoad={() => covers.loaded(ad.cover as string)}
+      onError={() => {
+        setBroken(ad.cover);
+        covers.loaded(ad.cover as string);
+      }}
       className={`object-cover ${className}`}
     />
   );
