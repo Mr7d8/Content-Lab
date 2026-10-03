@@ -1,5 +1,5 @@
 import 'server-only';
-import { buildQuestions, decodeCost, DECODE_ESTIMATE_USD, decodeSeconds, passageQuestions, scanVideoUrl, type Json, type Tables } from '@content-lab/core';
+import { buildQuestions, decodeCost, DECODE_ESTIMATE_USD, decodeSeconds, passageQuestions, scannedAd, scanVideoUrl, type Json, type Tables } from '@content-lab/core';
 import { createAIProviders, MAX_INLINE_VIDEO_BYTES } from '@content-lab/core/ai';
 import type { AdminClient } from './admin';
 import { runActorSync } from './apify';
@@ -52,6 +52,14 @@ async function creativeCenterVideo(admin: AdminClient, item: Item): Promise<Vide
   }
 }
 
+// Meta: the scan's link while Facebook's expiry allows (about a day); after
+// that a new scan of the board brings a fresh one.
+async function metaVideo(item: Item): Promise<Video> {
+  const url = scanVideoUrl(obj(item.scan_json));
+  if (!url) throw new Error('The video link expired: scan the board again, then decode');
+  return download(url);
+}
+
 // Organic: the TikTok scraper downloads the video into Apify storage.
 async function organicVideo(item: Item): Promise<Video> {
   const actor = process.env.APIFY_TIKTOK_ACTOR_ID || 'clockworks~tiktok-scraper';
@@ -86,13 +94,15 @@ export async function decodeAd(admin: AdminClient, itemId: string): Promise<Deco
   await admin.from('items').update({ decode_status: 'running', decode_error: null, decoded_at: new Date().toISOString() }).eq('id', item.id);
   try {
     const ai = createAIProviders(process.env, ['decoder', 'classifier'] as const);
-    const video = item.source === 'tiktok_creative_center' ? await creativeCenterVideo(admin, item) : await organicVideo(item);
+    const video = item.source === 'tiktok_creative_center'
+      ? await creativeCenterVideo(admin, item)
+      : item.source === 'meta_ad_library' ? await metaVideo(item) : await organicVideo(item);
     const seconds = decodeSeconds(adDuration(item));
     const scan = obj(item.scan_json);
     const decoded = await ai.decoder.decode(video, seconds, {
       source: item.source,
       advertiser: item.advertiser,
-      caption: str(scan.adText) ?? str(scan.text),
+      caption: str(scan.adText) ?? str(scan.text) ?? scannedAd(item.source, scan)?.caption ?? null,
       durationS: adDuration(item),
     });
     const jev = await ai.classifier.answer(jevState(item, decoded.output), { ...buildQuestions(), ...passageQuestions(decoded.output.segments) });

@@ -6,7 +6,7 @@ export type BoardPreset = {
   id: string;
   label: string;
   description: string;
-  source: 'tiktok_creative_center' | 'tiktok_organic';
+  source: 'tiktok_creative_center' | 'tiktok_organic' | 'meta_ad_library';
   type: 'keyword' | 'advertiser' | 'hashtag' | 'snowball';
   // Comma-separated terms (see terms.ts); "auto" for snowball boards.
   value: string;
@@ -17,6 +17,30 @@ export type BoardPreset = {
 };
 
 export const MOROCCO_PRESETS: readonly BoardPreset[] = [
+  {
+    id: 'meta-ecom',
+    label: 'Moroccan e-commerce on Meta',
+    description: 'Video ads running in Morocco on Facebook and Instagram, found by the words Moroccan COD stores write and by YouCan store links.',
+    source: 'meta_ad_library',
+    type: 'keyword',
+    value: 'youcan.shop, livraison gratuite, paiement à la livraison, الدفع عند الاستلام, التوصيل مجاني, التوصيل فابور, اطلبي دابا, درهم',
+    region: 'MA',
+    objective: null,
+    moroccanOnly: true,
+    name: 'Moroccan e-commerce on Meta',
+  },
+  {
+    id: 'meta-competitors',
+    label: 'Wasal competitors on Meta',
+    description: 'The video ads the marketplaces and seller platforms run in Morocco, from their own Facebook pages. Edit the names to fit.',
+    source: 'meta_ad_library',
+    type: 'advertiser',
+    value: 'Jumia, Avito.ma, Marjane Market, Electroplanet, KITEA, YouCan',
+    region: 'MA',
+    objective: null,
+    moroccanOnly: false,
+    name: 'Wasal competitors on Meta',
+  },
   {
     id: 'seller-words',
     label: 'Moroccan seller words',

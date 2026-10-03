@@ -2,7 +2,7 @@
 
 import { motion } from 'motion/react';
 import { useState } from 'react';
-import { axesFor, formatCount, groupAds, type BoardAd, type GroupKey } from '@/lib/board-view';
+import { axesFor, formatMetric, groupAds, metricWord, type BoardAd, type GroupKey } from '@/lib/board-view';
 import { Cover } from './cover';
 
 const TABS: { key: GroupKey; label: string }[] = [
@@ -35,7 +35,7 @@ export function WhichWins({
   const { rank } = axesFor(source);
   const groups = groupAds(ads, source, by).slice(0, 10);
   const top = Math.max(...groups.map((g) => g.median ?? 0), 0) || 1;
-  const metric = rank === 'ctr' ? 'CTR' : 'views';
+  const metric = metricWord(rank);
   const needsDecode = (by === 'format' || by === 'hook') && !groups.length;
 
   return (
@@ -91,7 +91,7 @@ export function WhichWins({
                       />
                     </div>
                     <span className="mono w-12 text-right text-[11px] tabular-nums text-ink">
-                      {g.median === null ? '–' : rank === 'ctr' ? g.median.toFixed(2) : formatCount(g.median)}
+                      {formatMetric(rank, g.median)}
                     </span>
                   </div>
                   <div className="col-start-2 row-start-1 flex w-[83px] justify-end gap-1 sm:col-start-3">

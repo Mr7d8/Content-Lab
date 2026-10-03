@@ -7,6 +7,7 @@ import {
   boardHeadline,
   boardStats,
   byMarket,
+  formatMetric,
   formatCount,
   groupAds,
   lengthBucket,
@@ -251,5 +252,25 @@ describe('parseSavedView', () => {
     expect(parseSavedView('not json')).toBeNull();
     expect(parseSavedView('[1, 2]')).toBeNull();
     expect(parseSavedView(JSON.stringify({ selected: 3, withOlder: 'yes', picked: ['a', 4] }))).toEqual({ selected: null, withOlder: false, showLeftOut: false, format: null, picked: ['a'] });
+  });
+});
+
+describe('Meta boards', () => {
+  const metaItem = (id: string, start: number, versions: number) => item({ id, source: 'meta_ad_library', external_id: id, source_url: `https://www.facebook.com/ads/library/?id=${id}` }, {
+    ad_archive_id: id, page_name: 'Avito.ma', is_active: true, start_date: start, collation_count: versions,
+    snapshot: { body: { text: 'BI3 BLA MADI3' }, videos: [{ video_sd_url: 'https://video.fbcdn.net/v.mp4?oe=6ac20460', video_preview_image_url: 'https://scontent.fbcdn.net/c.jpg?oe=6ac20460' }] },
+  });
+
+  it('shows days running and versions, ranks by days, and plots days against versions', () => {
+    // The scan row here replaces the Creative Center one item() starts from.
+    const old = toBoardAd({ ...metaItem('1000000000000001', 1788134400, 2), scan_json: { ad_archive_id: '1000000000000001', page_name: 'Avito.ma', is_active: true, start_date: 1788134400, collation_count: 2, snapshot: { videos: [] } } }, 1, null, null, NOW);
+    expect(old.metrics).toEqual({ days: 33, versions: 2 });
+    expect(old.advertiser).toBe('Avito.ma');
+    expect(axesFor('meta_ad_library')).toEqual({ x: 'versions', y: 'days', yLog: false, rank: 'days', other: 'versions' });
+    const fresh = { ...old, id: 'fresh', metrics: { days: 3, versions: 9 } };
+    expect(rankAds([fresh, old], 'meta_ad_library').map((a) => a.id)).toEqual([old.id, 'fresh']);
+    expect(boardStats([fresh, old], 'meta_ad_library')).toMatchObject({ medianRank: 18, medianOther: 5.5 });
+    expect(formatMetric('days', 33.4)).toBe('33');
+    expect(formatMetric('ctr', 0.4)).toBe('0.40');
   });
 });

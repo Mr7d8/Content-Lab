@@ -3,6 +3,7 @@
 export const SOURCES = {
   tiktok_creative_center: { label: 'Creative Center', phase: 1, adEvidence: true },
   tiktok_organic: { label: 'TikTok organic', phase: 1, adEvidence: false },
+  meta_ad_library: { label: 'Meta Ad Library', phase: 1, adEvidence: true },
   tiktok_commercial_library: { label: 'Commercial Content Library', phase: 2, adEvidence: true },
   tiktok_own_ads: { label: 'Our TikTok ads', phase: 3, adEvidence: true },
 } as const;
@@ -42,6 +43,22 @@ export const ANY_REGION_COUNTRIES: readonly string[] = [
   'US', 'GB', 'CA', 'AU', 'FR', 'DE', 'IT', 'ES', 'BR', 'MX', 'JP', 'KR',
   'ID', 'TH', 'VN', 'MY', 'PH', 'SA', 'AE', 'EG', 'TR', 'MA',
 ];
+
+// Facebook pages of the Wasal competitors, as Meta's Ad Library names them
+// in Morocco (looked up 2026-10-03). An advertiser board on Meta follows a
+// known page by its id, so it gets only that page's ads; any other name is
+// searched as words and kept only from pages of that name.
+export const META_PAGES: Readonly<Record<string, string>> = {
+  jumia: '420277734679018',
+  'avito.ma': '228265657217797',
+  avito: '228265657217797',
+  'marjane market': '101407061355100',
+  marjane: '101407061355100',
+  electroplanet: '555879391226328',
+  kitea: '232771703423452',
+};
+
+export const metaPageId = (name: string): string | null => META_PAGES[name.trim().toLowerCase()] ?? (/^\d{6,20}$/.test(name.trim()) ? name.trim() : null);
 
 // Countries a watchlist region covers; null means any region.
 export function expandRegion(region: string | null): string[] | null {

@@ -56,7 +56,7 @@ Create a Vercel project from this repository with the root directory `apps/web` 
 - `APIFY_TOKEN`
 - `GEMINI_API_KEY`, `TYPESAFE_API_KEY`
 - `CRON_SECRET`: any long random string. Vercel Cron sends it to the daily scan route, and it signs the Apify webhook that finishes a scan when no board is open.
-- optionally `NEXT_PUBLIC_SITE_URL`, `GEMINI_MODEL`, `JEV_MODEL`, `APIFY_CREATIVE_CENTER_ACTOR_ID`, `APIFY_TIKTOK_ACTOR_ID`
+- optionally `NEXT_PUBLIC_SITE_URL`, `GEMINI_MODEL`, `JEV_MODEL`, `APIFY_CREATIVE_CENTER_ACTOR_ID`, `APIFY_TIKTOK_ACTOR_ID`, `APIFY_META_ACTOR_ID` (Meta boards; curious_coder~facebook-ads-library-scraper by default)
 
 Never prefix a secret with `NEXT_PUBLIC_`: that ships it to the browser. Vercel only applies new variables to new deployments, so redeploy after changing them.
 

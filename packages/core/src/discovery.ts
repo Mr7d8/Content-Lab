@@ -5,13 +5,14 @@ import type { Tables } from './db';
 
 type Watchlist = Tables<'watchlists'>;
 
-export const DISCOVERY_SOURCES = ['tiktok_creative_center', 'tiktok_organic'] as const;
+export const DISCOVERY_SOURCES = ['tiktok_creative_center', 'tiktok_organic', 'meta_ad_library'] as const;
 export type DiscoverySource = (typeof DISCOVERY_SOURCES)[number];
 
 // Watchlist types each source can search by.
 export const WATCHLIST_TYPES: Readonly<Record<DiscoverySource, readonly Watchlist['type'][]>> = {
   tiktok_creative_center: ['industry', 'advertiser', 'keyword', 'snowball'],
   tiktok_organic: ['keyword', 'hashtag', 'account'],
+  meta_ad_library: ['keyword', 'advertiser'],
 };
 
 export const CADENCE_DAYS = { weekly: 7, monthly: 30 } as const;

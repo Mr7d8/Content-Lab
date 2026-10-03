@@ -3,12 +3,11 @@
 import { scaleLinear, scaleLog } from 'd3-scale';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { axesFor, formatCount, median, spreadPoints, type BoardAd } from '@/lib/board-view';
+import { axesFor, formatCount, formatMetric, median, METRIC_NAME, spreadPoints, type BoardAd, type MetricKey } from '@/lib/board-view';
 import { covers } from '@/lib/cover-loader';
 import { Cover } from './cover';
 import { Glow, ProgressiveBlur } from './glass';
 
-const AXIS_NAME = { likes: 'Likes', views: 'Views', ctr: 'CTR' } as const;
 
 function logTicks(domain: [number, number]): number[] {
   const out: number[] = [];
@@ -16,7 +15,9 @@ function logTicks(domain: [number, number]): number[] {
   return out;
 }
 
-const fmt = (axis: 'likes' | 'views' | 'ctr', v: number | undefined) => (v === undefined ? '–' : axis === 'ctr' ? v.toFixed(2) : formatCount(v));
+const fmt = (axis: MetricKey, v: number | undefined) => formatMetric(axis, v);
+// The corner where the strongest ads sit.
+const BEST_CORNER: Partial<Record<MetricKey, string>> = { ctr: 'HIGH CTR, MANY LIKES', likes: 'MANY VIEWS, MANY LIKES', days: 'LONG RUNNING, MANY VERSIONS' };
 
 type Rect = { x0: number; y0: number; x1: number; y1: number };
 
@@ -216,7 +217,7 @@ export function PerfMap({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="mr-auto">
           <p className="mono text-faint">Performance map</p>
-          <p className="mt-0.5 text-sm font-medium">{AXIS_NAME[axes.y]} against {AXIS_NAME[axes.x].toLowerCase()}, every {source === 'tiktok_organic' ? 'post' : 'ad'}</p>
+          <p className="mt-0.5 text-sm font-medium">{METRIC_NAME[axes.y]} against {METRIC_NAME[axes.x].toLowerCase()}, every {source === 'tiktok_organic' ? 'post' : 'ad'}</p>
         </div>
         <div className="mono flex items-center gap-3 text-faint">
           <span className="flex items-center gap-1.5"><span className="h-3.5 w-2 rounded-[3px] bg-[linear-gradient(160deg,#ffb36b,#ff5e8a)] shadow-[0_0_0_1.5px_var(--accent)]" />Decoded</span>
@@ -266,12 +267,12 @@ export function PerfMap({
               </text>
             </>
           )}
-          <text x={M.left} y={M.top - 12} fontSize={9.5} fontFamily="var(--font-mono)" fill="var(--sub)" letterSpacing="0.06em">↑ {AXIS_NAME[axes.y].toUpperCase()}</text>
+          <text x={M.left} y={M.top - 12} fontSize={9.5} fontFamily="var(--font-mono)" fill="var(--sub)" letterSpacing="0.06em">↑ {METRIC_NAME[axes.y].toUpperCase()}</text>
           <text x={W - M.right} y={H - 4} textAnchor="end" fontSize={9.5} fontFamily="var(--font-mono)" fill="var(--sub)" letterSpacing="0.06em">
-            {AXIS_NAME[axes.x].toUpperCase()}, LOG SCALE →
+            {METRIC_NAME[axes.x].toUpperCase()}, LOG SCALE →
           </text>
           <text x={W - M.right - 10} y={M.top + 16} textAnchor="end" fontSize={9.5} fontFamily="var(--font-mono)" fill="var(--faint)" letterSpacing="0.06em">
-            {axes.y === 'ctr' ? 'HIGH CTR, MANY LIKES' : 'MANY VIEWS, MANY LIKES'}
+            {BEST_CORNER[axes.y] ?? ''}
           </text>
         </svg>
 
@@ -290,7 +291,7 @@ export function PerfMap({
             <motion.button
               key={ad.id}
               type="button"
-              aria-label={`${ad.advertiser ?? ad.handle ?? 'Unknown advertiser'}: ${AXIS_NAME[axes.y]} ${fmt(axes.y, ad.metrics[axes.y])}, ${AXIS_NAME[axes.x].toLowerCase()} ${fmt(axes.x, ad.metrics[axes.x])}${done ? ', decoded' : ''}`}
+              aria-label={`${ad.advertiser ?? ad.handle ?? 'Unknown advertiser'}: ${METRIC_NAME[axes.y]} ${fmt(axes.y, ad.metrics[axes.y])}, ${METRIC_NAME[axes.x].toLowerCase()} ${fmt(axes.x, ad.metrics[axes.x])}${done ? ', decoded' : ''}`}
               aria-pressed={selected}
               onClick={() => onSelect(ad.id)}
               onPointerEnter={() => setHovered(ad.id)}
@@ -356,7 +357,7 @@ export function PerfMap({
                 <div className="absolute inset-x-2.5 bottom-2.5 text-white">
                   <p className="truncate text-[12.5px] font-semibold" dir="auto">{hoveredAd.advertiser ?? hoveredAd.handle ?? 'Unknown advertiser'}</p>
                   <p className="mono mt-0.5 text-[9.5px] text-white/80">
-                    {AXIS_NAME[axes.y]} {fmt(axes.y, hoveredAd.metrics[axes.y])} · {fmt(axes.x, hoveredAd.metrics[axes.x])} {AXIS_NAME[axes.x].toLowerCase()}
+                    {METRIC_NAME[axes.y]} {fmt(axes.y, hoveredAd.metrics[axes.y])} · {fmt(axes.x, hoveredAd.metrics[axes.x])} {METRIC_NAME[axes.x].toLowerCase()}
                   </p>
                 </div>
               </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { axesFor, formatCount, type BoardAd } from '@/lib/board-view';
+import { axesFor, formatMetric, metricWord, type BoardAd } from '@/lib/board-view';
 import { Cover } from './cover';
 import { ProgressiveBlur } from './glass';
 
@@ -28,7 +28,7 @@ export function TopAds({
     <div className="panel min-w-0 p-3 lg:col-span-2 xl:col-span-1">
       <div className="mb-4 flex items-baseline justify-between px-0.5">
         <p className="mono text-faint">Top {source === 'tiktok_organic' ? 'posts' : 'ads'}</p>
-        <p className="mono text-faint">by {rank === 'ctr' ? 'CTR' : 'views'}</p>
+        <p className="mono text-faint">by {metricWord(rank)}</p>
       </div>
       {/* Padding inside the scroll area so the selection ring is never clipped. */}
       {/* data-tiles and data-tile: where the map's covers fly in from (perf-map.tsx). */}
@@ -43,7 +43,7 @@ export function TopAds({
                 data-tile={ad.id}
                 onClick={() => onSelect(ad.id)}
                 aria-pressed={selected}
-                aria-label={`#${i + 1} ${ad.advertiser ?? ad.handle ?? 'Unknown advertiser'}, ${rank === 'ctr' ? 'CTR' : 'views'} ${formatCount(value)}${ad.decode.status === 'done' ? ', decoded' : ''}`}
+                aria-label={`#${i + 1} ${ad.advertiser ?? ad.handle ?? 'Unknown advertiser'}, ${metricWord(rank)} ${formatMetric(rank, value)}${ad.decode.status === 'done' ? ', decoded' : ''}`}
                 className={`group relative block aspect-[9/16] w-full overflow-hidden rounded-[14px] bg-fill transition-[opacity,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_24px_-8px_rgba(0,0,0,.35)] ${
                   selected
                     ? 'shadow-[0_0_0_2px_#fff,0_0_0_4px_var(--accent),0_10px_24px_-8px_rgba(10,132,255,.55)]'
@@ -62,7 +62,7 @@ export function TopAds({
                   </span>
                 )}
                 {ad.decode.status === 'running' && <span className="pulse-dot absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-white shadow-[0_0_0_2px_var(--accent)]" aria-hidden />}
-                <span className="absolute inset-x-1.5 bottom-1.5 text-left text-[12px] font-semibold tabular-nums tracking-tight text-white [text-shadow:0_1px_2px_rgba(0,0,0,.35)]">{formatCount(value)}</span>
+                <span className="absolute inset-x-1.5 bottom-1.5 text-left text-[12px] font-semibold tabular-nums tracking-tight text-white [text-shadow:0_1px_2px_rgba(0,0,0,.35)]">{formatMetric(rank, value)}</span>
               </button>
             </li>
           );

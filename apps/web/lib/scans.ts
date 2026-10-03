@@ -15,6 +15,7 @@ const STALE_SCAN_MS = 15 * 60_000;
 const ACTORS = {
   tiktok_creative_center: () => process.env.APIFY_CREATIVE_CENTER_ACTOR_ID || 'fetch_cat~tiktok-ads-library-scraper',
   tiktok_organic: () => process.env.APIFY_TIKTOK_ACTOR_ID || 'clockworks~tiktok-scraper',
+  meta_ad_library: () => process.env.APIFY_META_ACTOR_ID || 'curious_coder~facebook-ads-library-scraper',
 } as const;
 
 function apifyToken(): string {
@@ -78,7 +79,7 @@ export async function startScan(admin: AdminClient, boardId: string, trigger: 'm
     return { ok: false, message: (e as Error).message };
   }
 
-  const budget = scanBudget(settings, Number(spend ?? 0), board.max_items);
+  const budget = scanBudget(settings, Number(spend ?? 0), board.max_items, board.source);
   if (!budget.ok) {
     return {
       ok: false,
@@ -148,7 +149,7 @@ export async function syncScan(admin: AdminClient, runId: string, budgetMs = 800
   const done = finished && drained;
   const outcome = done ? scanOutcome(actorRun.status, actorRun.statusMessage) : null;
   // Apify's own figure once it has one; until then the estimate for the rows so far.
-  const cost = actorRun.usageTotalUsd ?? (offset ? estimateScan(offset) : 0);
+  const cost = actorRun.usageTotalUsd ?? (offset ? estimateScan(offset, board.source) : 0);
   // Only advance from the offset we read, so two syncs never double count.
   await admin.from('runs').update({
     synced_count: offset,
