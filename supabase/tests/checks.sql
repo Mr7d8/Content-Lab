@@ -345,3 +345,24 @@ do $$ declare board uuid; a uuid; b uuid; c uuid; n int; got uuid; begin
   raise notice 'PASS Moroccan check claims';
 end $$;
 rollback;
+
+-- Combined boards: several searches on one board, scan runs grouped by batch
+begin;
+do $$ declare board uuid; batch uuid := gen_random_uuid(); n int; begin
+  insert into public.watchlists (name, source, type, value, region, searches)
+    values ('Combined', 'meta_ad_library', 'combined', 'meta-ecom,seller-words', 'MA',
+      '[{"source":"meta_ad_library","type":"keyword","value":"youcan.shop"},{"source":"tiktok_creative_center","type":"keyword","value":"maroc"}]')
+    returning id into board;
+  begin
+    insert into public.watchlists (name, source, type, value, searches) values ('Bad', 'meta_ad_library', 'combined', 'x', '{"a":1}');
+    raise exception 'FAIL searches must be a list';
+  exception when check_violation then null; end;
+  insert into public.runs (source, watchlist_id, kind, status, spend_cap_usd, batch_id, search_json)
+    values ('meta_ad_library', board, 'scan', 'running', 0.1, batch, '{"source":"meta_ad_library"}'),
+           ('tiktok_creative_center', board, 'scan', 'running', 0.1, batch, '{"source":"tiktok_creative_center"}');
+  select count(*) into n from public.runs where batch_id = batch;
+  if n <> 2 then raise exception 'FAIL batch runs (%)', n; end if;
+  if (select jsonb_array_length(searches) from public.watchlists where id = board) <> 2 then raise exception 'FAIL searches stored'; end if;
+  raise notice 'PASS combined boards and scan batches';
+end $$;
+rollback;

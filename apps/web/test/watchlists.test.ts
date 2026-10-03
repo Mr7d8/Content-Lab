@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { meterState, parseWatchlistForm, scheduleText, sweptText } from '../lib/watchlists';
+import { boardSearches, boardSources, boardSourcesLabel, type Tables } from '@content-lab/core';
+import { combinedBoardRow, meterState, parseWatchlistForm, scheduleText, searchLine, sweptText } from '../lib/watchlists';
 
 const form = (fields: Record<string, string>) => (name: string) => fields[name] ?? null;
 const NOW = new Date('2026-10-02T06:00:00Z');
@@ -54,6 +55,59 @@ describe('parseWatchlistForm', () => {
     expect(parseWatchlistForm(form({ source: 'tiktok_organic', type: 'keyword', value: 'x', max_items: '200' }))).toMatchObject({ row: { max_items: 200 } });
     expect(parseWatchlistForm(form({ source: 'tiktok_organic', type: 'keyword', value: 'x', period_days: '14' }))).toMatchObject({ ok: false });
     expect(parseWatchlistForm(form({ source: 'tiktok_organic', type: 'keyword', value: 'x', period_days: '7' }))).toMatchObject({ row: { period_days: 7 } });
+  });
+});
+
+describe('combined boards', () => {
+  const ids = ['competitors', 'meta-ecom', 'seller-words', 'meta-competitors'];
+
+  it('makes one board running every picked starter, in the starters order', () => {
+    const r = combinedBoardRow(ids, { ads: 50, cadence: 'manual', name: '' });
+    if (!r.ok) throw new Error(r.message);
+    expect(r.row).toMatchObject({
+      name: 'Morocco on Meta and TikTok',
+      source: 'meta_ad_library',
+      type: 'combined',
+      value: 'competitors,meta-competitors,meta-ecom,seller-words',
+      region: 'MA',
+      objective: null,
+      max_items: 50,
+      moroccan_only: true,
+    });
+    const board = r.row as Tables<'watchlists'>;
+    const searches = boardSearches(board);
+    expect(searches.map((s) => [s.source, s.type, s.objective, s.moroccan_only])).toEqual([
+      ['meta_ad_library', 'keyword', null, true],
+      ['meta_ad_library', 'advertiser', null, false],
+      ['tiktok_creative_center', 'keyword', 'purchase', true],
+      ['tiktok_creative_center', 'advertiser', null, false],
+    ]);
+    expect(boardSources(board)).toEqual(['meta_ad_library', 'tiktok_creative_center']);
+    expect(boardSourcesLabel(board)).toBe('Meta Ad Library + Creative Center');
+  });
+
+  it('names the board after its country and platforms, keeps a typed name, and follows snowballs', () => {
+    expect(combinedBoardRow(['meta-ecom', 'followed'], { ads: 30, cadence: 'weekly', name: '' })).toMatchObject({
+      ok: true,
+      row: { name: 'Morocco on Meta and TikTok', value: 'followed,meta-ecom', refresh_cadence: 'weekly' },
+    });
+    const r = combinedBoardRow(['followed', 'meta-ecom'], { ads: 30, cadence: 'manual', name: '  Wasal watch ' });
+    if (!r.ok) throw new Error(r.message);
+    expect(r.row.name).toBe('Wasal watch');
+    expect(combinedBoardRow(['organic-words', 'organic-hashtags'], { ads: 30, cadence: 'manual', name: '' })).toMatchObject({ row: { name: 'Morocco on TikTok', source: 'tiktok_organic' } });
+    expect(boardSearches(r.row as Tables<'watchlists'>)[1]).toMatchObject({ type: 'snowball', value: 'auto' });
+  });
+
+  it('refuses fewer than two starters and bad settings', () => {
+    expect(combinedBoardRow(['meta-ecom', 'nope'], { ads: 30, cadence: 'manual', name: '' })).toEqual({ ok: false, message: 'Pick at least two starters.' });
+    expect(combinedBoardRow(ids, { ads: 500, cadence: 'manual', name: '' }).ok).toBe(false);
+    expect(combinedBoardRow(ids, { ads: 30, cadence: 'daily', name: '' }).ok).toBe(false);
+  });
+
+  it('reads an ordinary board as its one search', () => {
+    const board = { source: 'tiktok_organic', type: 'hashtag', value: 'maroc', region: 'MA', objective: null, period_days: 7, moroccan_only: true, searches: [] };
+    expect(boardSearches(board)).toEqual([{ source: 'tiktok_organic', type: 'hashtag', value: 'maroc', region: 'MA', objective: null, period_days: 7, moroccan_only: true }]);
+    expect(searchLine(board)).toBe('Organic TikTok · #maroc · Morocco');
   });
 });
 

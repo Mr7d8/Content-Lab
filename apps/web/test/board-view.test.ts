@@ -14,6 +14,7 @@ import {
   marketCounts,
   parseSavedView,
   rankAds,
+  scanOfRuns,
   scanProgress,
   scanSummary,
   splitByScan,
@@ -243,7 +244,7 @@ describe('scanProgress', () => {
 
 describe('parseSavedView', () => {
   it('reads what the board was showing', () => {
-    const view = { selected: 'a1', withOlder: true, showLeftOut: false, format: 'ugc_testimonial', picked: ['a1', 'a2'] };
+    const view = { selected: 'a1', withOlder: true, showLeftOut: false, format: 'ugc_testimonial', picked: ['a1', 'a2'], source: 'tiktok_creative_center' };
     expect(parseSavedView(JSON.stringify(view))).toEqual(view);
   });
 
@@ -251,7 +252,7 @@ describe('parseSavedView', () => {
     expect(parseSavedView(null)).toBeNull();
     expect(parseSavedView('not json')).toBeNull();
     expect(parseSavedView('[1, 2]')).toBeNull();
-    expect(parseSavedView(JSON.stringify({ selected: 3, withOlder: 'yes', picked: ['a', 4] }))).toEqual({ selected: null, withOlder: false, showLeftOut: false, format: null, picked: ['a'] });
+    expect(parseSavedView(JSON.stringify({ selected: 3, withOlder: 'yes', picked: ['a', 4] }))).toEqual({ selected: null, withOlder: false, showLeftOut: false, format: null, picked: ['a'], source: null });
   });
 });
 
@@ -272,5 +273,22 @@ describe('Meta boards', () => {
     expect(boardStats([fresh, old], 'meta_ad_library')).toMatchObject({ medianRank: 18, medianOther: 5.5 });
     expect(formatMetric('days', 33.4)).toBe('33');
     expect(formatMetric('ctr', 0.4)).toBe('0.40');
+  });
+});
+
+describe('scanOfRuns', () => {
+  const run = (id: string, status: string, synced: number, extra: Record<string, unknown> = {}) => ({
+    id, status, synced_count: synced, items_requested: 80, error: null, started_at: '2026-10-03T01:00:00Z', finished_at: status === 'running' ? null : '2026-10-03T01:02:00Z', ...extra,
+  });
+
+  it('adds up the runs of one scan, and runs while any of them does', () => {
+    expect(scanOfRuns([run('a', 'completed', 80), run('b', 'running', 30, { started_at: '2026-10-03T00:59:58Z' })])).toEqual({
+      runIds: ['a', 'b'], status: 'running', synced: 110, requested: 160, error: null, startedAt: '2026-10-03T00:59:58Z', finishedAt: null,
+    });
+  });
+
+  it('completes when one search worked, and fails only when every one did', () => {
+    expect(scanOfRuns([run('a', 'completed', 80), run('b', 'failed', 0, { error: 'The scraper failed' })])).toMatchObject({ status: 'completed', error: null, finishedAt: '2026-10-03T01:02:00Z' });
+    expect(scanOfRuns([run('a', 'failed', 0, { error: 'The scraper failed' }), run('b', 'failed', 0)])).toMatchObject({ status: 'failed', error: 'The scraper failed' });
   });
 });

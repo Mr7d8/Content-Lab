@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { MAX_SCAN_ADS } from '@content-lab/core';
-import { boardValue, CADENCES, parseWatchlistForm, PERIODS } from '@/lib/watchlists';
+import { boardValue, CADENCES, combinedBoardRow, parseWatchlistForm, PERIODS } from '@/lib/watchlists';
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; message: string };
 
@@ -24,6 +24,23 @@ export async function createBoard(formData: FormData): Promise<ActionResult> {
   if (!parsed.ok) return parsed;
   const { data, error } = await supabase.from('watchlists').insert(parsed.row).select('id').single();
   if (error) return { ok: false, message: error.code === '23505' ? 'A board with this search already exists.' : error.message };
+  revalidatePath('/b', 'layout');
+  return { ok: true, id: data.id };
+}
+
+// One board from several starters picked in the New board dialog. The
+// client starts its first scan, which runs every starter's search.
+export async function createCombinedBoard(presetIds: string[], shared: { ads: number; cadence: string; name: string }): Promise<ActionResult> {
+  const supabase = await signedIn();
+  if (!supabase) return { ok: false, message: 'Sign in first.' };
+  const parsed = combinedBoardRow(Array.isArray(presetIds) ? presetIds.filter((id) => typeof id === 'string') : [], {
+    ads: Number(shared?.ads),
+    cadence: String(shared?.cadence ?? ''),
+    name: typeof shared?.name === 'string' ? shared.name : '',
+  });
+  if (!parsed.ok) return parsed;
+  const { data, error } = await supabase.from('watchlists').insert(parsed.row).select('id').single();
+  if (error) return { ok: false, message: error.code === '23505' ? 'A board with these starters already exists.' : error.message };
   revalidatePath('/b', 'layout');
   return { ok: true, id: data.id };
 }

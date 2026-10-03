@@ -1,14 +1,16 @@
 import 'server-only';
-import type { Tables } from '@content-lab/core';
+import { boardSourcesLabel, type Tables } from '@content-lab/core';
 import type { ServerClient } from './supabase/server';
-import { toBoardAd, type BoardAd } from './board-view';
+import { scanOfRuns, toBoardAd, type BoardAd } from './board-view';
 import type { GateStatus } from './gate';
 
-export type BoardSummary = { id: string; name: string; source: string; ads: number; lastScan: string | null };
+// sources: the board's sources, as shown ("Meta Ad Library + TikTok Creative Center").
+export type BoardSummary = { id: string; name: string; sources: string; ads: number; lastScan: string | null };
 
-// synced: the scraper's rows read, out of requested. kept: the ads on the
-// board seen by this scan; the other rows were left out on the way in.
-export type ScanState = { id: string; status: string; synced: number; requested: number; kept: number; error: string | null; startedAt: string | null; finishedAt: string | null };
+// The latest scan, all its runs together (one per search). synced: the
+// scrapers' rows read, out of requested. kept: the ads on the board seen by
+// this scan; the other rows were left out on the way in.
+export type ScanState = { id: string; runIds: string[]; status: string; synced: number; requested: number; kept: number; error: string | null; startedAt: string | null; finishedAt: string | null };
 
 export type BoardData = {
   board: Tables<'watchlists'>;
@@ -24,11 +26,11 @@ export type BoardData = {
 };
 
 export async function listBoards(supabase: ServerClient): Promise<BoardSummary[]> {
-  const { data } = await supabase.from('watchlists').select('id, name, source, last_swept_at, board_items(count)').order('name');
+  const { data } = await supabase.from('watchlists').select('id, name, source, type, value, region, objective, period_days, searches, last_swept_at, board_items(count)').order('name');
   return (data ?? []).map((w) => ({
     id: w.id,
     name: w.name,
-    source: w.source,
+    sources: boardSourcesLabel(w),
     ads: (w.board_items as unknown as { count: number }[] | null)?.[0]?.count ?? 0,
     lastScan: w.last_swept_at,
   }));
@@ -44,7 +46,7 @@ export async function loadBoard(supabase: ServerClient, boardId: string): Promis
   const [{ data: board }, { data: members }, { data: scan }, { data: finished }, boards, { data: settings }, { data: spend }] = await Promise.all([
     supabase.from('watchlists').select('*').eq('id', boardId).maybeSingle(),
     supabase.from('board_items').select('rank, last_seen_at, status, item:items(*)').eq('watchlist_id', boardId),
-    supabase.from('runs').select('id, status, synced_count, items_requested, error, started_at, finished_at')
+    supabase.from('runs').select('id, status, synced_count, items_requested, error, started_at, finished_at, batch_id')
       .eq('watchlist_id', boardId).eq('kind', 'scan').order('created_at', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('runs').select('started_at')
       .eq('watchlist_id', boardId).eq('kind', 'scan').eq('status', 'completed').order('created_at', { ascending: false }).limit(1).maybeSingle(),
@@ -53,6 +55,11 @@ export async function loadBoard(supabase: ServerClient, boardId: string): Promis
     supabase.rpc('month_spend_usd'),
   ]);
   if (!board) return null;
+  // A scan of several searches is the latest run with the others of its batch.
+  const { data: batchRuns } = scan?.batch_id
+    ? await supabase.from('runs').select('id, status, synced_count, items_requested, error, started_at, finished_at').eq('batch_id', scan.batch_id)
+    : { data: null };
+  const latest = scan ? scanOfRuns(batchRuns?.length ? batchRuns : [scan]) : null;
 
   const rows = (members ?? []).flatMap((m) => (m.item ? [{ rank: m.rank, seenAt: m.last_seen_at, gate: m.status as GateStatus, item: m.item as unknown as Tables<'items'> }] : []));
   const ids = rows.map((r) => r.item.id);
@@ -77,10 +84,10 @@ export async function loadBoard(supabase: ServerClient, boardId: string): Promis
     ads,
     cutoff: finished?.started_at ?? null,
     gate: { pending: ads.filter((a) => a.gate === 'pending').length, rejected: ads.filter((a) => a.gate === 'rejected').length },
-    scan: scan ? {
-      id: scan.id, status: scan.status, synced: scan.synced_count, requested: scan.items_requested,
-      kept: scan.started_at ? rows.filter((r) => Date.parse(r.seenAt) >= Date.parse(scan.started_at as string)).length : 0,
-      error: scan.error, startedAt: scan.started_at, finishedAt: scan.finished_at,
+    scan: scan && latest ? {
+      ...latest,
+      id: scan.batch_id ?? scan.id,
+      kept: latest.startedAt ? rows.filter((r) => Date.parse(r.seenAt) >= Date.parse(latest.startedAt as string)).length : 0,
     } : null,
     boards,
     spend: {

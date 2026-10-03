@@ -1,6 +1,6 @@
 'use client';
 
-import { DECODE_ESTIMATE_USD, estimateScan, type Tables } from '@content-lab/core';
+import { boardScanEstimate, boardSearches, DECODE_ESTIMATE_USD, type Tables } from '@content-lab/core';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { deleteBoard, updateBoard } from '@/app/(app)/b/actions';
@@ -15,6 +15,7 @@ import type { ScanView } from './use-scan';
 
 function BoardMenu({ board }: { board: Tables<'watchlists'> }) {
   const router = useRouter();
+  const combined = board.type === 'combined';
   const [name, setName] = useState(board.name);
   const [confirm, setConfirm] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -61,9 +62,11 @@ function BoardMenu({ board }: { board: Tables<'watchlists'> }) {
           </form>
           <SearchSettings board={board} pending={pending} save={save} />
           {opts('Schedule', board.refresh_cadence, CADENCES.map((c) => ({ value: c as string, label: c === 'manual' ? 'Manual' : c === 'weekly' ? 'Weekly' : 'Monthly' })), (v) => save({ refresh_cadence: v }))}
-          {board.source === 'tiktok_creative_center' && opts('Period', board.period_days, PERIODS.map((p) => ({ value: p as number, label: `${p} days` })), (v) => save({ period_days: v }))}
-          {opts('Ads per scan', board.max_items, ADS_PER_SCAN.map((n) => ({ value: n as number, label: String(n) })), (v) => save({ max_items: v }))}
-          <p className="-mt-2.5 text-[11px] text-faint">About ${estimateScan(board.max_items, board.source).toFixed(2)} per scan, paid per ad found.</p>
+          {board.type !== 'combined' && board.source === 'tiktok_creative_center' && opts('Period', board.period_days, PERIODS.map((p) => ({ value: p as number, label: `${p} days` })), (v) => save({ period_days: v }))}
+          {opts(combined ? 'Ads per search' : 'Ads per scan', board.max_items, ADS_PER_SCAN.map((n) => ({ value: n as number, label: String(n) })), (v) => save({ max_items: v }))}
+          <p className="-mt-2.5 text-[11px] text-faint">
+            About ${boardScanEstimate(board).toFixed(2)} per scan{combined ? ` for its ${boardSearches(board).length} searches` : ''}, paid per ad found.
+          </p>
           {message && <p className="text-xs text-red" role="alert">{message}</p>}
           <div className="border-t border-[var(--line)] pt-3">
             <button
@@ -223,6 +226,8 @@ export function Hero({
   top,
   onSelect,
   market,
+  source,
+  sources,
 }: {
   board: Tables<'watchlists'>;
   headline: string;
@@ -234,6 +239,9 @@ export function Hero({
   onSelect: (id: string) => void;
   // The market filter, shown on the scan line.
   market?: React.ReactNode;
+  // The source shown, and the Meta / TikTok switch of a board with both.
+  source: string;
+  sources?: React.ReactNode;
 }) {
   return (
     <section className="grid gap-6 pb-6 pt-5 sm:pt-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
@@ -252,6 +260,7 @@ export function Hero({
           <span className="text-accent">.</span>
         </h1>
         <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-sub">{headline}</p>
+        {sources && <div className="mt-4">{sources}</div>}
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2.5">
           <ScanLine board={board} scan={scan} count={count} summary={summary} />
           {market && (
@@ -262,7 +271,7 @@ export function Hero({
           )}
         </div>
       </div>
-      <CoverStack ads={top} source={board.source} onSelect={onSelect} />
+      <CoverStack ads={top} source={source} onSelect={onSelect} />
     </section>
   );
 }
