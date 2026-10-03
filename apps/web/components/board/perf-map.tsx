@@ -231,7 +231,8 @@ export function PerfMap({
 
       <div
         ref={wrap}
-        className={`relative mt-3 select-none ${lasso ? 'cursor-crosshair' : ''}`}
+        // A crosshair over the empty map: dragging there picks the ads in the box.
+        className={`relative mt-3 select-none ${touch ? '' : 'cursor-crosshair'}`}
         style={{ height: H }}
         onPointerDown={onDown}
         onPointerMove={onMove}
@@ -321,7 +322,7 @@ export function PerfMap({
                 scale: { type: 'spring', stiffness: 320, damping: 32 },
               }}
               style={{ width: T.w, height: T.h, zIndex: selected ? 30 : isPicked ? 20 : done ? 10 : 1 }}
-              className="absolute left-0 top-0 rounded-[6px] outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              className="absolute left-0 top-0 cursor-pointer rounded-[6px] outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
               {/* Leaves at its tile's size and shrinks on the way; the target never changes, so it does not replay. */}
               <motion.span
@@ -405,12 +406,6 @@ export function PerfMap({
           <span className="flex items-center gap-1.5">
             <svg width="18" height="4" aria-hidden><line x1="0" x2="18" y1="2" y2="2" stroke="var(--faint)" strokeWidth="1.5" strokeDasharray="3 3" /></svg>
             Typical {noun}: {yMark.text} {metricUnit(axes.y, geometry.my)}, {xMark.text} {metricUnit(axes.x, geometry.mx)}
-          </span>
-        )}
-        {!touch && (
-          <span className="flex items-center gap-1.5">
-            <span className="h-3 w-4 rounded-[3px] border border-dashed border-accent bg-accent/10" aria-hidden />
-            Drag a box around {noun}s to decode them together
           </span>
         )}
         {missing > 0 && (

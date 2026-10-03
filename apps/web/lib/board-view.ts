@@ -130,7 +130,7 @@ export const metricUnit = (key: MetricKey, v: number | null | undefined): string
   v !== null && v !== undefined && Math.round(v) === 1 && key !== 'ctr' ? METRIC_UNIT[key].replace(/s$/, '') : METRIC_UNIT[key];
 export const metricWord = (key: MetricKey): string => (key === 'ctr' ? 'CTR' : METRIC_NAME[key].toLowerCase());
 export const formatMetric = (key: MetricKey, v: number | null | undefined): string =>
-  v === null || v === undefined ? '–' : key === 'ctr' ? v.toFixed(2) : key === 'days' ? String(Math.round(v)) : formatCount(v);
+  v === null || v === undefined ? '–' : key === 'ctr' ? v.toFixed(2) : key === 'days' ? String(Math.round(v)) : formatCount(Math.round(v));
 
 // What each number means, in a few words, for the map's axes.
 export const METRIC_MEANS: Record<MetricKey, string> = {

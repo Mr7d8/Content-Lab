@@ -308,4 +308,10 @@ describe('map ticks', () => {
     expect(formatTick('ctr', 0.5)).toBe('0.5');
     expect(formatTick('ctr', 0)).toBe('0');
   });
+
+  it('writes a typical count whole, even when it falls between two ads', () => {
+    expect(formatMetric('likes', 232.5)).toBe('233');
+    expect(formatMetric('versions', 1.5)).toBe('2');
+    expect(formatMetric('ctr', 0.335)).toBe('0.34');
+  });
 });
