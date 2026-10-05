@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { creativeCenterAd, creativeCenterScanInput, estimateScan, metaAd, metaPageMatches, metaScanInput, organicAd, organicScanInput, scanBudget, scanMediaExpired, scanVideoUrl } from '../src/scan';
+import { creativeCenterAd, creativeCenterScanInput, estimateScan, metaAd, metaPageMatches, metaScanInput, organicAd, organicScanInput, scanBudget, scanMediaExpired, scanVideoUrl, withFreshMedia } from '../src/scan';
 import { ANY_REGION_COUNTRIES, fitsObjective } from '../src/sources';
 
 // Shape of a real fetch_cat/tiktok-ads-library-scraper row (2026-10-02 scan).
@@ -80,6 +80,16 @@ describe('scanned ads', () => {
     expect(scanVideoUrl(ccRow, new Date('2026-10-02T12:00:00Z'))).toBe('https://cdn.test/540.mp4');
     expect(scanVideoUrl(ccRow, new Date('2026-10-02T16:31:00Z'))).toBeNull();
     expect(scanVideoUrl(null)).toBeNull();
+  });
+
+  it('takes only the media links from a fresh row of the same ad', () => {
+    const fresh = { adId: ccRow.adId, ctr: null, likes: 0, videoUrls: { '540p': 'https://cdn.test/new540.mp4' }, coverImageUrl: 'https://cdn.test/new.jpeg', mediaExpiresAt: '2026-10-05T16:00:00.000Z' };
+    const next = withFreshMedia(ccRow, fresh);
+    expect(scanVideoUrl(next, new Date('2026-10-05T12:00:00Z'))).toBe('https://cdn.test/new540.mp4');
+    expect(next).toMatchObject({ ctr: 0.72, likes: 16, rank: 1, coverImageUrl: 'https://cdn.test/new.jpeg' });
+    // The old row's other links expired with it.
+    expect(next).not.toHaveProperty('videoUrl');
+    expect(next).not.toHaveProperty('videoId');
   });
 });
 

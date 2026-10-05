@@ -1,9 +1,10 @@
 import 'server-only';
-import { buildQuestions, decodeCost, DECODE_ESTIMATE_USD, decodeSeconds, passageQuestions, scannedAd, scanVideoUrl, type Json, type Tables } from '@content-lab/core';
+import { buildQuestions, decodeCost, DECODE_ESTIMATE_USD, decodeSeconds, passageQuestions, scannedAd, scanVideoUrl, type Tables } from '@content-lab/core';
 import { createAIProviders, MAX_INLINE_VIDEO_BYTES } from '@content-lab/core/ai';
 import type { AdminClient } from './admin';
 import { runActorSync } from './apify';
 import { adDuration, decodeRows, jevState } from './decode-records';
+import { refreshCreativeCenterMedia } from './video-refresh';
 
 type Item = Tables<'items'>;
 type Video = { data: Uint8Array; mimeType: string };
@@ -33,14 +34,10 @@ async function creativeCenterVideo(admin: AdminClient, item: Item): Promise<Vide
   let scan = obj(item.scan_json);
   let url = scanVideoUrl(scan);
   if (!url) {
-    const actor = process.env.APIFY_CREATIVE_CENTER_ACTOR_ID || 'fetch_cat~tiktok-ads-library-scraper';
-    const rows = await runActorSync(actor, { startUrls: [{ url: item.source_url }], maxItems: 3 }, { token: apifyToken(), timeoutS: 120, maxItems: 3 });
-    const fresh = rows.find((r) => str(r.adId) === item.external_id);
-    if (!fresh) throw new Error('The video link expired and could not be refreshed: scan the board again, then decode');
-    scan = fresh;
-    url = scanVideoUrl(scan);
-    if (!url) throw new Error('The refreshed ad has no video link');
-    await admin.from('items').update({ scan_json: fresh as Json, scanned_at: new Date().toISOString() }).eq('id', item.id);
+    const fresh = await refreshCreativeCenterMedia(admin, item);
+    if (!fresh.ok) throw new Error(fresh.message);
+    scan = fresh.scan;
+    url = fresh.video;
   }
   try {
     return await download(url);

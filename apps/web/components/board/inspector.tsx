@@ -22,6 +22,30 @@ function statsFor(ad: BoardAd, source: string): { label: string; value: string }
   return [{ label: metricUnit(rank, ad.metrics[rank]), value: formatMetric(rank, ad.metrics[rank]) }, { label: metricUnit(other, ad.metrics[other]), value: formatMetric(other, ad.metrics[other]) }, length];
 }
 
+// Creative Center video links expire about 6 hours after a scan. An open ad
+// whose link is gone asks the server for a fresh one (about a cent). What came
+// back, or why it failed, is kept for the tab by ad, so reopening one does not
+// ask again.
+const freshVideos = new Map<string, string>();
+const refreshFailures = new Map<string, string>();
+const refreshing = new Map<string, Promise<string>>();
+
+function refreshVideo(id: string): Promise<string> {
+  let pending = refreshing.get(id);
+  if (!pending) {
+    pending = (async () => {
+      const res = await fetch(`/api/ads/${id}/video/refresh`, { method: 'POST' });
+      const body = (await res.json().catch(() => null)) as { ok: boolean; video?: string; message?: string } | null;
+      if (!body?.ok || !body.video) throw new Error(body?.message ?? `Could not refresh the video (HTTP ${res.status})`);
+      freshVideos.set(id, body.video);
+      return body.video;
+    })();
+    pending.catch((e: unknown) => refreshFailures.set(id, (e as Error).message)).finally(() => refreshing.delete(id));
+    refreshing.set(id, pending);
+  }
+  return pending;
+}
+
 // The ad as a full-bleed card: video or cover, with name, caption, numbers and
 // the main action on a frosted band at the bottom.
 function MediaCard({
@@ -39,14 +63,36 @@ function MediaCard({
   video: React.RefObject<HTMLVideoElement | null>;
   onDecode: () => void;
 }) {
-  const [failed, setFailed] = useState<string | null>(null);
+  // Links the browser could not play.
+  const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
+  const [fresh, setFresh] = useState<string | null>(() => freshVideos.get(ad.id) ?? null);
+  const [refreshError, setRefreshError] = useState<string | null>(() => refreshFailures.get(ad.id) ?? null);
   const [playing, setPlaying] = useState(false);
   const soundOn = useSoundOn();
   // The browser refused to start this video with sound before any click.
   const [blocked, setBlocked] = useState(false);
   const muted = !soundOn || blocked;
   const soundButton = useRef<HTMLButtonElement>(null);
-  const playable = !!ad.video && failed !== ad.video;
+  const src = [ad.video, fresh].find((u): u is string => !!u && !failed.has(u)) ?? null;
+  const playable = !!src;
+  // No link that plays: a fresh one is on its way, unless that was tried already.
+  const gaveUp = refreshError !== null || (!!fresh && failed.has(fresh));
+  const loading = !src && ad.source === 'tiktok_creative_center' && !gaveUp;
+  useEffect(() => {
+    if (!loading) return;
+    let live = true;
+    refreshVideo(ad.id).then(
+      (url) => {
+        if (live) setFresh(url);
+      },
+      (e: unknown) => {
+        if (live) setRefreshError((e as Error).message);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [loading, ad.id]);
 
   // Plays on its own. With sound on, a browser that wants a click first gets a
   // muted start, and the sound comes on at the first click or key press.
@@ -101,7 +147,7 @@ function MediaCard({
           <video
             ref={video}
             key={ad.id}
-            src={ad.video as string}
+            src={src as string}
             poster={ad.cover ?? undefined}
             muted={muted}
             loop
@@ -109,7 +155,11 @@ function MediaCard({
             preload="metadata"
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
-            onError={() => setFailed(ad.video)}
+            onError={() => {
+              // A fresh link that stopped working (the tab stayed open for hours) is asked for again next time.
+              if (src === freshVideos.get(ad.id)) freshVideos.delete(ad.id);
+              setFailed((f) => new Set(f).add(src as string));
+            }}
             onClick={toggle}
             className="absolute inset-0 h-full w-full cursor-pointer object-cover"
           />
@@ -123,8 +173,12 @@ function MediaCard({
         <div className="absolute inset-x-3 top-3 flex items-start justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <span className="liquid-dark mono rounded-full px-2.5 py-1 text-[10px] tabular-nums">#{rank} of {total}</span>
-            {!playable && (
-              <span className="liquid-dark mono rounded-full px-2.5 py-1 text-[10px]" title="The video link expired. Scan again to play it here; decoding fetches its own copy.">
+            {loading ? (
+              <span className="liquid-dark mono flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px]" role="status">
+                <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-white" /> Loading video
+              </span>
+            ) : !playable && (
+              <span className="liquid-dark mono rounded-full px-2.5 py-1 text-[10px]" title={`${refreshError ? `${refreshError.replace(/\.$/, '')}. ` : 'The video link expired. '}Scan again to play it here; decoding fetches its own copy.`}>
                 Video expired
               </span>
             )}
@@ -147,8 +201,21 @@ function MediaCard({
           </div>
         </div>
         <AnimatePresence>
+          {loading && (
+            <motion.span
+              key="loading"
+              aria-hidden
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              className="liquid-dark absolute left-1/2 top-[42%] grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full"
+            >
+              <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+            </motion.span>
+          )}
           {playable && !playing && (
             <motion.button
+              key="play"
               type="button"
               aria-label="Play"
               onClick={toggle}
