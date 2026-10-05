@@ -3,8 +3,8 @@ import { adVideo } from '@/lib/decode';
 import { requireTeam } from '@/lib/team';
 import { saveVideo } from '@/lib/videos';
 
-// Getting the video may need a fresh link from DD (up to 2 minutes).
-export const maxDuration = 180;
+// An organic post's video comes through the TikTok scraper (up to 3 minutes).
+export const maxDuration = 300;
 
 // Saves a decoded ad's video, so it stays after its links expire or a rescan
 // replaces them. Decodes save theirs on their own; this is for ads decoded

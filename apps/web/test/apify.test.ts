@@ -29,6 +29,19 @@ describe('runActorSync', () => {
     expect(done.run).toMatchObject({ status: 'ABORTED', usageTotalUsd: 0.006 });
   });
 
+  it('asks again when a wait for the run is dropped', async () => {
+    let checks = 0;
+    const flaky = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/runs?')) return json(run('RUNNING'), 201);
+      if (url.includes('/actor-runs/r1')) return ++checks === 1 ? new Response('Bad gateway', { status: 502 }) : json(run('SUCCEEDED'));
+      return json([{ adId: '1' }]);
+    }) as typeof fetch;
+    const done = await runActorSync('a~b', {}, { token: 't', timeoutS: 10 }, flaky);
+    expect(checks).toBe(2);
+    expect(done.rows).toEqual([{ adId: '1' }]);
+  });
+
   it('says how a run ended when it found nothing', async () => {
     const empty = runActorSync('a~b', {}, { token: 't', timeoutS: 10, what: 'refreshing the video link' }, apify(run('ABORTED', 'Stopped by the platform'), []));
     await expect(empty).rejects.toThrow('DD: the scraper was stopped without results while refreshing the video link (run r1): Stopped by the platform');

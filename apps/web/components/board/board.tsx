@@ -237,7 +237,7 @@ export function Board({ data }: { data: BoardData }) {
             <TopAds ads={ads} source={source} selectedId={selected?.id ?? null} onSelect={select} dimmed={dimmed} />
             <PerfMap ads={ads} source={source} selectedId={selected?.id ?? null} picked={picked} onSelect={select} onPick={(ids) => setPicked(new Set(ids))} dimmed={dimmed} />
             <div ref={inspector} className="scroll-mt-20 lg:sticky lg:top-20 lg:row-span-2">
-              <Inspector ad={selected} rank={selectedIndex + 1} total={ads.length} source={source} video={video} onSeek={seek} onDecode={(id) => queue.decode([id])} />
+              <Inspector ad={selected} rank={selectedIndex + 1} total={ads.length} source={source} video={video} scan={scan} onRescan={startScan} onSeek={seek} onDecode={(id) => queue.decode([id])} />
             </div>
             {/* Frame by frame and craft: wide rows under the map, beside the inspector. */}
             <div className="min-w-0 space-y-4 empty:hidden xl:col-span-2">

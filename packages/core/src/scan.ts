@@ -314,18 +314,3 @@ export function scanVideoUrl(scan: Raw | null, now: Date = new Date()): string |
   const urls = obj(scan.videoUrls);
   return str(urls['540p']) ?? str(urls['480p']) ?? str(urls['720p']) ?? str(urls['360p']) ?? str(scan.videoUrl);
 }
-
-// A Creative Center row's media: its links and when they expire.
-const CREATIVE_CENTER_MEDIA = ['videoId', 'videoUrl', 'videoUrls', 'coverImageUrl', 'mediaExpiresAt'] as const;
-
-// A scan row with its media taken from a fresh row of the same ad. The rest
-// (rank, numbers, text) stays as the board's scan saw it, so a detail page
-// that reports fewer numbers cannot move the ad on the map.
-export function withFreshMedia(scan: Raw, fresh: Raw): Raw {
-  const next: Raw = { ...scan };
-  for (const k of CREATIVE_CENTER_MEDIA) {
-    if (fresh[k] === undefined || fresh[k] === null) delete next[k];
-    else next[k] = fresh[k];
-  }
-  return next;
-}

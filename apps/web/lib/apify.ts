@@ -102,8 +102,16 @@ export async function runActorSync(
   const what = options.what ?? 'fetching the video';
   let run = await startActorRun(actorId, input, { token: options.token, timeoutS: options.timeoutS, maxItems: options.maxItems, what }, fetchImpl);
   const deadline = Date.now() + (options.timeoutS + 15) * 1000;
+  // DD's gateway sometimes drops a long wait (HTTP 502): ask again, a few times.
+  let misses = 0;
   while (!(FINISHED_RUN_STATUSES as readonly string[]).includes(run.status) && Date.now() < deadline) {
-    run = await getActorRun(run.id, options.token, fetchImpl, Math.max(1, Math.min(50, (deadline - Date.now()) / 1000)));
+    try {
+      run = await getActorRun(run.id, options.token, fetchImpl, Math.max(1, Math.min(30, (deadline - Date.now()) / 1000)));
+      misses = 0;
+    } catch (e) {
+      if (++misses >= 3) throw e;
+      await new Promise((r) => setTimeout(r, 2000 * misses));
+    }
   }
   const rows = run.datasetId ? await getDatasetItems(run.datasetId, 0, options.maxItems ?? 100, options.token, fetchImpl) : [];
   if (!rows.length && run.status !== 'SUCCEEDED') {

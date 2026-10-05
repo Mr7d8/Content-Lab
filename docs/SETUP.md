@@ -93,7 +93,7 @@ A scan started by the cron finishes on its own: Apify calls `/api/apify/webhook`
 
 ## Known limits
 
-- **Creative Center video links** expire after about 6 hours. Covers are cached, so the board stays visual. Pressing play on an older ad asks DD (Apify) for a fresh link, about a cent each. A decoded ad's video is saved with it (or with **Save** on ads decoded earlier), so it plays for good, even after a rescan. Saved videos count toward Supabase storage (1 GB on Free, a few MB each).
+- **Video links** from a scan expire (Creative Center after about 6 hours, Meta after about a day). Covers are cached, so the board stays visual. An ad whose link expired offers **Rescan board** in the inspector: a full scan through DD (Apify) that brings new ads, and fresh links for the ads it finds again. Decoding and saving an ad need a live link too. A decoded ad's video is saved with it (or with **Save** on ads decoded earlier, while the link is live), so it plays for good, even after a rescan. Saved videos count toward Supabase storage (1 GB on Free, a few MB each).
 - **Industry filters** need Creative Center keys such as `label_22110000000`. Boards with a plain word (for example `ecommerce`) scan every industry for their country and objective.
 - **Budget tier** in the inspector is Creative Center's cost index (0, 1, 2), shown as Low, Medium, High.
 - Videos over 14 MB are decoded from a lower resolution copy, when the source has one.

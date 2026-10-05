@@ -4,7 +4,6 @@ import { createAIProviders, MAX_INLINE_VIDEO_BYTES } from '@content-lab/core/ai'
 import type { AdminClient } from './admin';
 import { runActorSync } from './apify';
 import { adDuration, decodeRows, jevState } from './decode-records';
-import { refreshCreativeCenterMedia } from './video-refresh';
 import { saveVideo, type Video } from './videos';
 
 type Item = Tables<'items'>;
@@ -28,17 +27,12 @@ async function download(url: string, headers: Record<string, string> = {}): Prom
   return { data, mimeType: 'video/mp4' };
 }
 
-// Creative Center: the scan's link while it is valid (about 6 hours), else a
-// fresh one from the scraper's detail page for this ad.
-async function creativeCenterVideo(admin: AdminClient, item: Item): Promise<Video> {
-  let scan = obj(item.scan_json);
-  let url = scanVideoUrl(scan);
-  if (!url) {
-    const fresh = await refreshCreativeCenterMedia(admin, item);
-    if (!fresh.ok) throw new Error(fresh.message);
-    scan = fresh.scan;
-    url = fresh.video;
-  }
+// Creative Center: the scan's link while it is valid (about 6 hours). After
+// that a rescan of the board brings a fresh one, with new ads.
+async function creativeCenterVideo(item: Item): Promise<Video> {
+  const scan = obj(item.scan_json);
+  const url = scanVideoUrl(scan);
+  if (!url) throw new Error('The video link expired: rescan the board, then try again');
   try {
     return await download(url);
   } catch (e) {
@@ -53,7 +47,7 @@ async function creativeCenterVideo(admin: AdminClient, item: Item): Promise<Vide
 // that a new scan of the board brings a fresh one.
 async function metaVideo(item: Item): Promise<Video> {
   const url = scanVideoUrl(obj(item.scan_json));
-  if (!url) throw new Error('The video link expired: scan the board again, then decode');
+  if (!url) throw new Error('The video link expired: rescan the board, then try again');
   return download(url);
 }
 
@@ -78,7 +72,7 @@ export async function adVideo(admin: AdminClient, item: Item): Promise<Video> {
     const saved = await download(item.video_url).catch(() => null);
     if (saved) return saved;
   }
-  if (item.source === 'tiktok_creative_center') return creativeCenterVideo(admin, item);
+  if (item.source === 'tiktok_creative_center') return creativeCenterVideo(item);
   return item.source === 'meta_ad_library' ? metaVideo(item) : organicVideo(item);
 }
 

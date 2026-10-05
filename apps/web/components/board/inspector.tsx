@@ -9,6 +9,7 @@ import { clock } from '@/lib/frame-view';
 import { Cover } from './cover';
 import { Glow, ProgressiveBlur } from './glass';
 import { MarketNote } from './market';
+import type { ScanView } from './use-scan';
 import { getSoundOn, setSoundOn, useSoundOn } from './use-sound';
 
 const Sparkle = ({ size = 14 }: { size?: number }) => (
@@ -22,30 +23,24 @@ function statsFor(ad: BoardAd, source: string): { label: string; value: string }
   return [{ label: metricUnit(rank, ad.metrics[rank]), value: formatMetric(rank, ad.metrics[rank]) }, { label: metricUnit(other, ad.metrics[other]), value: formatMetric(other, ad.metrics[other]) }, length];
 }
 
-// Creative Center video links expire about 6 hours after a scan. Pressing
-// play on such an ad asks the server for a fresh link (a DD run, about a
-// cent), so only ads someone wants to watch cost anything. A decoded ad's
-// video can be saved with it instead, so it plays for good. What came back,
-// and requests under way, are kept for the tab by ad.
-const freshVideos = new Map<string, string>();
+// A decoded ad's video can be saved with it, so it plays for good, even after
+// its links expire or a rescan. Copies saved from this tab, and saves under
+// way, are kept by ad.
 const savedVideos = new Map<string, string>();
-const pendingVideos = new Map<string, Promise<string>>();
+const pendingSaves = new Map<string, Promise<string>>();
 
-type VideoAsk = 'refresh' | 'save';
-
-function askVideo(ask: VideoAsk, id: string): Promise<string> {
-  const key = `${ask}:${id}`;
-  let pending = pendingVideos.get(key);
+function askToSave(id: string): Promise<string> {
+  let pending = pendingSaves.get(id);
   if (!pending) {
     pending = (async () => {
-      const res = await fetch(`/api/ads/${id}/video/${ask}`, { method: 'POST' });
+      const res = await fetch(`/api/ads/${id}/video/save`, { method: 'POST' });
       const body = (await res.json().catch(() => null)) as { ok: boolean; video?: string; message?: string } | null;
-      if (!body?.ok || !body.video) throw new Error(body?.message ?? `Could not ${ask === 'save' ? 'save' : 'load'} the video (HTTP ${res.status})`);
-      (ask === 'save' ? savedVideos : freshVideos).set(id, body.video);
+      if (!body?.ok || !body.video) throw new Error(body?.message ?? `Could not save the video (HTTP ${res.status})`);
+      savedVideos.set(id, body.video);
       return body.video;
     })();
-    pending.catch(() => undefined).finally(() => pendingVideos.delete(key));
-    pendingVideos.set(key, pending);
+    pending.catch(() => undefined).finally(() => pendingSaves.delete(id));
+    pendingSaves.set(id, pending);
   }
   return pending;
 }
@@ -65,6 +60,8 @@ function MediaCard({
   total,
   source,
   video,
+  scan,
+  onRescan,
   onDecode,
 }: {
   ad: BoardAd;
@@ -72,17 +69,16 @@ function MediaCard({
   total: number;
   source: string;
   video: React.RefObject<HTMLVideoElement | null>;
+  scan: ScanView;
+  onRescan: () => void;
   onDecode: () => void;
 }) {
   // Links the browser could not play.
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
-  const [fresh, setFresh] = useState<string | null>(() => freshVideos.get(ad.id) ?? null);
-  const [loading, setLoading] = useState(() => pendingVideos.has(`refresh:${ad.id}`));
-  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [savedHere, setSavedHere] = useState<string | null>(() => savedVideos.get(ad.id) ?? null);
   // The board's copy (decodes save theirs), else one saved from this tab.
   const saved = ad.videoSaved ? ad.video : savedHere;
-  const [saving, setSaving] = useState(() => pendingVideos.has(`save:${ad.id}`));
+  const [saving, setSaving] = useState(() => pendingSaves.has(ad.id));
   const [saveError, setSaveError] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const soundOn = useSoundOn();
@@ -92,31 +88,31 @@ function MediaCard({
   const soundButton = useRef<HTMLButtonElement>(null);
   // A copy saved in this tab comes last, so saving never restarts a video
   // that is already playing.
-  const src = [ad.video, fresh, saved].find((u): u is string => !!u && !failed.has(u)) ?? null;
+  const src = [ad.video, saved].find((u): u is string => !!u && !failed.has(u)) ?? null;
   const playable = !!src;
-  // No link that plays: pressing play fetches a fresh one.
-  const refreshable = !src && ad.source === 'tiktok_creative_center';
+  // Scan links expire (Creative Center after about 6 hours, Meta after about
+  // a day). A rescan of the board brings new ads, and fresh links for the ads
+  // it finds again. Organic posts carry no link to refresh.
+  const rescannable = !playable && ad.source !== 'tiktok_organic';
+  const scanning = scan.phase === 'starting' || scan.phase === 'running';
+  // Rescanned from this card: once the scan ends, say if it missed this ad.
+  const [rescanned, setRescanned] = useState(false);
+  const rescan = () => {
+    setRescanned(true);
+    onRescan();
+  };
+  const rescanNote = scanning
+    ? 'Scanning the board: fresh videos come in with the ads.'
+    : scan.phase === 'failed' && scan.error
+      ? `Scan failed: ${scan.error}`
+      : rescanned && scan.phase === 'completed'
+        ? 'The rescan did not find this ad again, so its video stays expired.'
+        : 'The video link expired. A rescan brings new ads, and fresh videos for the ones it finds again.';
   const live = useRef(true);
-  const loadVideo = useCallback(() => {
-    setLoading(true);
-    setRefreshError(null);
-    askVideo('refresh', ad.id).then(
-      (url) => {
-        if (!live.current) return;
-        setLoading(false);
-        setFresh(url);
-      },
-      (e: unknown) => {
-        if (!live.current) return;
-        setLoading(false);
-        setRefreshError((e as Error).message);
-      },
-    );
-  }, [ad.id]);
   const saveVideo = useCallback(() => {
     setSaving(true);
     setSaveError(null);
-    askVideo('save', ad.id).then(
+    askToSave(ad.id).then(
       (url) => {
         if (!live.current) return;
         setSaving(false);
@@ -131,17 +127,12 @@ function MediaCard({
   }, [ad.id]);
   useEffect(() => {
     live.current = true;
-    // Back on an ad whose video was still loading or saving: pick it up when it lands.
-    if (pendingVideos.has(`refresh:${ad.id}`)) loadVideo();
-    if (pendingVideos.has(`save:${ad.id}`)) saveVideo();
+    // Back on an ad whose video was still saving: pick it up when it lands.
+    if (pendingSaves.has(ad.id)) saveVideo();
     return () => {
       live.current = false;
     };
-  }, [ad.id, loadVideo, saveVideo]);
-  // The server only refreshes a link it takes for expired; one that still
-  // would not play has nothing left to try.
-  const noPlay = !loading && !refreshError && !!fresh && failed.has(fresh) ? 'The video link no longer plays: scan the board again' : null;
-  const problem = refreshError ?? noPlay;
+  }, [ad.id, saveVideo]);
 
   // Plays on its own. With sound on, a browser that wants a click first gets a
   // muted start, and the sound comes on at the first click or key press.
@@ -204,11 +195,7 @@ function MediaCard({
             preload="metadata"
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
-            onError={() => {
-              // A fresh link that stopped working (the tab stayed open for hours) is fetched again on the next play.
-              if (src === freshVideos.get(ad.id)) freshVideos.delete(ad.id);
-              setFailed((f) => new Set(f).add(src as string));
-            }}
+            onError={() => setFailed((f) => new Set(f).add(src as string))}
             onClick={toggle}
             className="absolute inset-0 h-full w-full cursor-pointer object-cover"
           />
@@ -222,16 +209,16 @@ function MediaCard({
         <div className="absolute inset-x-3 top-3 flex items-start justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <span className="liquid-dark mono rounded-full px-2.5 py-1 text-[10px] tabular-nums">#{rank} of {total}</span>
-            {loading ? (
-              <span className="liquid-dark mono flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px]" role="status">
-                <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-white" /> Loading video
-              </span>
-            ) : saved ? (
+            {saved ? (
               <span className="liquid-dark mono rounded-full px-2.5 py-1 text-[10px]" title="Saved with the ad: it plays even after its links expire or a rescan.">
                 Saved
               </span>
-            ) : !playable && !refreshable && (
-              <span className="liquid-dark mono rounded-full px-2.5 py-1 text-[10px]" title="The video link expired. Scan again to play it here; decoding fetches its own copy.">
+            ) : rescannable && scanning ? (
+              <span className="liquid-dark mono flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px]" role="status">
+                <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-white" /> Scanning
+              </span>
+            ) : !playable && (
+              <span className="liquid-dark mono rounded-full px-2.5 py-1 text-[10px]" title={rescannable ? 'The video link expired. Rescan the board for a fresh one.' : 'No video link for this post here; decoding fetches its own copy.'}>
                 Video expired
               </span>
             )}
@@ -254,9 +241,9 @@ function MediaCard({
           </div>
         </div>
         <AnimatePresence>
-          {loading && (
+          {rescannable && scanning && (
             <motion.span
-              key="loading"
+              key="scanning"
               aria-hidden
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -266,12 +253,26 @@ function MediaCard({
               <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/25 border-t-white" />
             </motion.span>
           )}
-          {((playable && !playing) || (refreshable && !loading)) && (
+          {rescannable && !scanning && (
+            <motion.button
+              key="rescan"
+              type="button"
+              onClick={rescan}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              className="liquid-dark absolute left-1/2 top-[42%] flex h-11 -translate-x-1/2 -translate-y-1/2 items-center gap-2 whitespace-nowrap rounded-full px-4 text-[13px] font-medium text-white"
+            >
+              <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden><path d="M12 7a5 5 0 1 1-1.5-3.6M12 2v2.6H9.4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              Rescan board
+            </motion.button>
+          )}
+          {playable && !playing && (
             <motion.button
               key="play"
               type="button"
               aria-label="Play"
-              onClick={playable ? toggle : loadVideo}
+              onClick={toggle}
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
@@ -281,9 +282,9 @@ function MediaCard({
             </motion.button>
           )}
         </AnimatePresence>
-        {(saveError ?? (problem && !loading && !playable ? problem : null)) && (
-          <p role="alert" className="liquid-dark absolute inset-x-6 top-[calc(42%+40px)] rounded-[14px] px-3 py-2 text-center text-[11.5px] leading-snug text-white" dir="auto">
-            {saveError ?? problem}
+        {(saveError || rescannable) && (
+          <p role={saveError ? 'alert' : 'status'} className="liquid-dark absolute inset-x-6 top-[calc(42%+40px)] rounded-[14px] px-3 py-2 text-center text-[11.5px] leading-snug text-white" dir="auto">
+            {saveError ?? rescanNote}
           </p>
         )}
 
@@ -334,7 +335,14 @@ function MediaCard({
                 <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden><path d="M7 1.5v8M3.8 6.5 7 9.7l3.2-3.2M2 12.5h10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </a>
             ) : (
-              <button type="button" onClick={saveVideo} disabled={saving} className="liquid-dark grid h-9 w-9 shrink-0 place-items-center rounded-full" aria-label="Save the video" title="Save the video with the ad, so it stays after rescans">
+              <button
+                type="button"
+                onClick={saveVideo}
+                disabled={saving || rescannable}
+                className="liquid-dark grid h-9 w-9 shrink-0 place-items-center rounded-full disabled:opacity-50"
+                aria-label="Save the video"
+                title={rescannable ? 'Rescan the board first: the video link expired' : 'Save the video with the ad, so it stays after rescans'}
+              >
                 {saving ? (
                   <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/25 border-t-white" />
                 ) : (
@@ -458,6 +466,8 @@ export function Inspector({
   total,
   source,
   video,
+  scan,
+  onRescan,
   onSeek,
   onDecode,
 }: {
@@ -467,6 +477,9 @@ export function Inspector({
   source: string;
   // Owned by the board, so the frame strip under the map can follow and seek it.
   video: React.RefObject<HTMLVideoElement | null>;
+  // The board's scan: an ad whose video link expired offers to rescan.
+  scan: ScanView;
+  onRescan: () => void;
   onSeek: (s: number) => void;
   onDecode: (id: string) => void;
 }) {
@@ -482,7 +495,7 @@ export function Inspector({
     <aside aria-label="Inspector" className="no-scrollbar min-w-0 lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto">
       <AnimatePresence mode="wait" initial={false}>
         <motion.div key={ad.id} initial={{ opacity: 0, y: 8, scale: 0.99 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }} className="space-y-3">
-          <MediaCard ad={ad} rank={rank} total={total} source={source} video={video} onDecode={() => onDecode(ad.id)} />
+          <MediaCard ad={ad} rank={rank} total={total} source={source} video={video} scan={scan} onRescan={onRescan} onDecode={() => onDecode(ad.id)} />
 
           <div className="panel p-4">
             <MarketNote market={ad.market} decoded={ad.decode.status === 'done'} adId={ad.id} />
