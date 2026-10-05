@@ -22,23 +22,27 @@ function toRun(data: Record<string, unknown> | undefined): ActorRun {
   };
 }
 
+// Apify's own reason for a refused call (memory limit, used credits, bad
+// input), with the token kept out of it.
+async function apifyError(res: Response, token: string, what?: string): Promise<Error> {
+  let detail = '';
+  try {
+    const body = (await res.json()) as { error?: { message?: string } };
+    detail = body.error?.message ?? '';
+  } catch {
+    // Not JSON.
+  }
+  const hint = res.status === 401 || res.status === 403 ? 'check APIFY_TOKEN' : `HTTP ${res.status}`;
+  return new Error(`Apify: ${hint}${what ? ` while ${what}` : ''}${detail ? `. ${detail.replaceAll(token, '[redacted]').slice(0, 300)}` : ''}`);
+}
+
 async function apifyRequest(path: string, token: string, init: RequestInit = {}, fetchImpl: typeof fetch = fetch) {
   const res = await fetchImpl(`${API}${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) },
     signal: AbortSignal.timeout(20000),
   });
-  if (!res.ok) {
-    let detail = '';
-    try {
-      const body = (await res.json()) as { error?: { message?: string } };
-      detail = body.error?.message ?? '';
-    } catch {
-      // Not JSON.
-    }
-    const hint = res.status === 401 || res.status === 403 ? 'check APIFY_TOKEN' : `HTTP ${res.status}`;
-    throw new Error(`Apify: ${hint}${detail ? `. ${detail.replaceAll(token, '[redacted]').slice(0, 300)}` : ''}`);
-  }
+  if (!res.ok) throw await apifyError(res, token);
   return res;
 }
 
@@ -90,7 +94,7 @@ export async function runActorSync(
     body: JSON.stringify(input),
     signal: AbortSignal.timeout((options.timeoutS + 20) * 1000),
   });
-  if (!res.ok) throw new Error(`Apify: HTTP ${res.status} while ${options.what ?? 'fetching the video'}`);
+  if (!res.ok) throw await apifyError(res, options.token, options.what ?? 'fetching the video');
   const body = (await res.json()) as unknown;
   if (!Array.isArray(body)) throw new Error('Apify returned an unexpected dataset');
   return body.filter((r): r is Record<string, unknown> => !!r && typeof r === 'object' && !Array.isArray(r));

@@ -2,7 +2,7 @@
 
 import { DECODE_ESTIMATE_USD, labelText, sourceLabel, type BeatRole } from '@content-lab/core';
 import { AnimatePresence, motion } from 'motion/react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { axesFor, formatMetric, metricUnit, type BoardAd } from '@/lib/board-view';
 import { BEAT_COLORS } from '@/lib/colors';
 import { clock } from '@/lib/frame-view';
@@ -22,12 +22,11 @@ function statsFor(ad: BoardAd, source: string): { label: string; value: string }
   return [{ label: metricUnit(rank, ad.metrics[rank]), value: formatMetric(rank, ad.metrics[rank]) }, { label: metricUnit(other, ad.metrics[other]), value: formatMetric(other, ad.metrics[other]) }, length];
 }
 
-// Creative Center video links expire about 6 hours after a scan. An open ad
-// whose link is gone asks the server for a fresh one (about a cent). What came
-// back, or why it failed, is kept for the tab by ad, so reopening one does not
-// ask again.
+// Creative Center video links expire about 6 hours after a scan. Pressing
+// play on such an ad asks the server for a fresh link (a scraper run, about a
+// cent), so only ads someone wants to watch cost anything. Fresh links and
+// refreshes under way are kept for the tab by ad.
 const freshVideos = new Map<string, string>();
-const refreshFailures = new Map<string, string>();
 const refreshing = new Map<string, Promise<string>>();
 
 function refreshVideo(id: string): Promise<string> {
@@ -36,11 +35,11 @@ function refreshVideo(id: string): Promise<string> {
     pending = (async () => {
       const res = await fetch(`/api/ads/${id}/video/refresh`, { method: 'POST' });
       const body = (await res.json().catch(() => null)) as { ok: boolean; video?: string; message?: string } | null;
-      if (!body?.ok || !body.video) throw new Error(body?.message ?? `Could not refresh the video (HTTP ${res.status})`);
+      if (!body?.ok || !body.video) throw new Error(body?.message ?? `Could not load the video (HTTP ${res.status})`);
       freshVideos.set(id, body.video);
       return body.video;
     })();
-    pending.catch((e: unknown) => refreshFailures.set(id, (e as Error).message)).finally(() => refreshing.delete(id));
+    pending.catch(() => undefined).finally(() => refreshing.delete(id));
     refreshing.set(id, pending);
   }
   return pending;
@@ -66,7 +65,8 @@ function MediaCard({
   // Links the browser could not play.
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
   const [fresh, setFresh] = useState<string | null>(() => freshVideos.get(ad.id) ?? null);
-  const [refreshError, setRefreshError] = useState<string | null>(() => refreshFailures.get(ad.id) ?? null);
+  const [loading, setLoading] = useState(() => refreshing.has(ad.id));
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const soundOn = useSoundOn();
   // The browser refused to start this video with sound before any click.
@@ -75,24 +75,37 @@ function MediaCard({
   const soundButton = useRef<HTMLButtonElement>(null);
   const src = [ad.video, fresh].find((u): u is string => !!u && !failed.has(u)) ?? null;
   const playable = !!src;
-  // No link that plays: a fresh one is on its way, unless that was tried already.
-  const gaveUp = refreshError !== null || (!!fresh && failed.has(fresh));
-  const loading = !src && ad.source === 'tiktok_creative_center' && !gaveUp;
-  useEffect(() => {
-    if (!loading) return;
-    let live = true;
+  // No link that plays: pressing play fetches a fresh one.
+  const refreshable = !src && ad.source === 'tiktok_creative_center';
+  const live = useRef(true);
+  const loadVideo = useCallback(() => {
+    setLoading(true);
+    setRefreshError(null);
     refreshVideo(ad.id).then(
       (url) => {
-        if (live) setFresh(url);
+        if (!live.current) return;
+        setLoading(false);
+        setFresh(url);
       },
       (e: unknown) => {
-        if (live) setRefreshError((e as Error).message);
+        if (!live.current) return;
+        setLoading(false);
+        setRefreshError((e as Error).message);
       },
     );
+  }, [ad.id]);
+  useEffect(() => {
+    live.current = true;
+    // Back on an ad whose video was still loading: pick it up when it lands.
+    if (refreshing.has(ad.id)) loadVideo();
     return () => {
-      live = false;
+      live.current = false;
     };
-  }, [loading, ad.id]);
+  }, [ad.id, loadVideo]);
+  // The server only refreshes a link it takes for expired; one that still
+  // would not play has nothing left to try.
+  const noPlay = !loading && !refreshError && !!fresh && failed.has(fresh) ? 'The video link no longer plays: scan the board again' : null;
+  const problem = refreshError ?? noPlay;
 
   // Plays on its own. With sound on, a browser that wants a click first gets a
   // muted start, and the sound comes on at the first click or key press.
@@ -156,7 +169,7 @@ function MediaCard({
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
             onError={() => {
-              // A fresh link that stopped working (the tab stayed open for hours) is asked for again next time.
+              // A fresh link that stopped working (the tab stayed open for hours) is fetched again on the next play.
               if (src === freshVideos.get(ad.id)) freshVideos.delete(ad.id);
               setFailed((f) => new Set(f).add(src as string));
             }}
@@ -177,8 +190,8 @@ function MediaCard({
               <span className="liquid-dark mono flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px]" role="status">
                 <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-white" /> Loading video
               </span>
-            ) : !playable && (
-              <span className="liquid-dark mono rounded-full px-2.5 py-1 text-[10px]" title={`${refreshError ? `${refreshError.replace(/\.$/, '')}. ` : 'The video link expired. '}Scan again to play it here; decoding fetches its own copy.`}>
+            ) : !playable && !refreshable && (
+              <span className="liquid-dark mono rounded-full px-2.5 py-1 text-[10px]" title="The video link expired. Scan again to play it here; decoding fetches its own copy.">
                 Video expired
               </span>
             )}
@@ -213,12 +226,12 @@ function MediaCard({
               <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/25 border-t-white" />
             </motion.span>
           )}
-          {playable && !playing && (
+          {((playable && !playing) || (refreshable && !loading)) && (
             <motion.button
               key="play"
               type="button"
               aria-label="Play"
-              onClick={toggle}
+              onClick={playable ? toggle : loadVideo}
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
@@ -228,6 +241,11 @@ function MediaCard({
             </motion.button>
           )}
         </AnimatePresence>
+        {problem && !loading && !playable && (
+          <p role="alert" className="liquid-dark absolute inset-x-6 top-[calc(42%+40px)] rounded-[14px] px-3 py-2 text-center text-[11.5px] leading-snug text-white" dir="auto">
+            {problem}
+          </p>
+        )}
 
         <div className="absolute inset-x-0 bottom-0 space-y-2.5 px-3.5 pb-3.5 text-white">
           <div className="min-w-0">

@@ -22,7 +22,7 @@ export async function POST(_request: Request, ctx: RouteContext<'/api/ads/[id]/v
   const current = scanVideoUrl(obj(item.scan_json));
   if (current) return Response.json({ ok: true, video: current });
   if (item.source !== 'tiktok_creative_center') return Response.json({ ok: false, message: 'The video link expired: scan the board again.' }, { status: 410 });
-  const result = await refreshCreativeCenterMedia(admin, item);
-  if (!result.ok) return Response.json({ ok: false, message: result.message }, { status: 502 });
+  const result = await refreshCreativeCenterMedia(admin, item, { exclusive: true });
+  if (!result.ok) return Response.json({ ok: false, message: result.message }, { status: result.busy ? 409 : 502 });
   return Response.json({ ok: true, video: result.video });
 }
