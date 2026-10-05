@@ -270,6 +270,15 @@ do $$ begin
   raise notice 'PASS covers bucket public, board items closed to anon';
 end $$;
 
+do $$ begin
+  if not (select public from storage.buckets where id = 'videos') then raise exception 'FAIL videos bucket not public'; end if;
+  begin
+    insert into public.items (source, source_url, external_id, video_url) values ('tiktok_creative_center', 'https://ads.tiktok.com/x', 'v1', 'http://insecure.example/v.mp4');
+    raise exception 'FAIL saved video address not checked';
+  exception when check_violation then null; end;
+  raise notice 'PASS videos bucket public, saved video addresses are https';
+end $$;
+
 -- Moroccan boards: the gate, board item status, advertisers, market checks in spend
 begin;
 set local role authenticated;

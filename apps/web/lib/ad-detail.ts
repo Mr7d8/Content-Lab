@@ -29,7 +29,7 @@ export async function signFrames(supabase: Pick<ServerClient, 'storage'>, paths:
 // What the inspector loads when an ad is opened.
 export async function loadAdDetail(supabase: ServerClient, id: string): Promise<AdDetail | null> {
   const [{ data: item }, { data: media }, { data: classes }] = await Promise.all([
-    supabase.from('items').select('id, scan_json').eq('id', id).maybeSingle(),
+    supabase.from('items').select('*').eq('id', id).maybeSingle(),
     supabase.from('media').select('frames_json, transcript_segments, keyframe_paths').eq('item_id', id).maybeSingle(),
     supabase.from('classifications').select('labels_json, corrections_json').eq('item_id', id).order('created_at', { ascending: false }).limit(1),
   ]);
@@ -42,6 +42,6 @@ export async function loadAdDetail(supabase: ServerClient, id: string): Promise<
     segments: segmentsOf(media?.transcript_segments),
     images: await signFrames(supabase, media?.keyframe_paths ?? []),
     record: parsed?.success ? applyCorrections(parsed.data, latest?.corrections_json) : null,
-    capturable: frames.length > 0 && scanVideoUrl(obj(item.scan_json)) !== null,
+    capturable: frames.length > 0 && (!!item.video_url || scanVideoUrl(obj(item.scan_json)) !== null),
   };
 }

@@ -56,21 +56,30 @@ export async function refreshCreativeCenterMedia(admin: AdminClient, item: Item,
 
   const actor = process.env.APIFY_CREATIVE_CENTER_ACTOR_ID || 'fetch_cat~tiktok-ads-library-scraper';
   let rows: Raw[] = [];
+  let usage: number | null = null;
+  let ended = '';
   let message: string | null = null;
   try {
-    rows = await runActorSync(actor, { startUrls: [{ url: item.source_url }], maxItems: MAX_ROWS }, { token, timeoutS: TIMEOUT_S, maxItems: MAX_ROWS, what: 'refreshing the video link' });
+    const done = await runActorSync(actor, { startUrls: [{ url: item.source_url }], maxItems: MAX_ROWS }, { token, timeoutS: TIMEOUT_S, maxItems: MAX_ROWS, what: 'refreshing the video link' });
+    rows = done.rows;
+    usage = done.run.usageTotalUsd;
+    ended = done.run.status;
   } catch (e) {
     message = (e as Error).message;
   }
   const fresh = rows.find((r) => str(r.adId) === item.external_id);
   const scan = fresh ? withFreshMedia(obj(item.scan_json), fresh) : null;
   const video = scan ? scanVideoUrl(scan) : null;
-  if (!message && !video) message = fresh ? 'The refreshed ad has no video link' : `The scraper did not return this ad (${rows.length} rows): scan the board again`;
+  if (!message && !video) {
+    message = fresh
+      ? 'DD found the ad, but with no video link'
+      : `DD returned ${rows.length} other ${rows.length === 1 ? 'ad' : 'ads'}, not this one (run ${ended.toLowerCase()}): scan the board again`;
+  }
 
   // A failed run still counts: the scraper charges for its start.
   await admin.from('runs').update({
     status: video ? 'completed' : 'failed', items_done: video ? 1 : 0, items_failed: video ? 0 : 1,
-    cost_actual_usd: Number(estimateScan(rows.length, item.source).toFixed(4)), error: message, finished_at: new Date().toISOString(),
+    cost_actual_usd: Number(Math.min(usage ?? estimateScan(rows.length, item.source), 999).toFixed(4)), error: message, finished_at: new Date().toISOString(),
   }).eq('id', run.id);
 
   if (!scan || !video) return { ok: false, message: message as string };

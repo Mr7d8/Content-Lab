@@ -20,7 +20,11 @@ export type BoardAd = {
   region: string | null;
   durationS: number | null;
   cover: string | null;
+  // The saved copy when there is one, else the scan's link while it lasts.
   video: string | null;
+  // Whether the video is saved with the ad (decoded ads), so rescans and
+  // expired links leave it playing.
+  videoSaved: boolean;
   metrics: AdMetrics;
   decode: { status: 'none' | 'running' | 'done' | 'failed'; error: string | null; at: string | null };
   labels: AdLabels | null;
@@ -76,7 +80,8 @@ export function toBoardAd(item: ItemRow, rank: number | null, labels: ClassRow |
     durationS: item.duration_s !== null ? Number(item.duration_s) : (scanned?.durationS ?? null),
     // The cached copy, else the source's link while it lasts.
     cover: item.thumbnail_url ?? (scanMediaExpired(scan, now) ? null : (scanned?.coverUrl ?? null)),
-    video: scanVideoUrl(scan, now),
+    video: item.video_url ?? scanVideoUrl(scan, now),
+    videoSaved: !!item.video_url,
     metrics,
     decode: { status, error: status === 'failed' ? (item.decode_error ?? 'The decode stopped before it finished') : null, at: item.decoded_at },
     labels: l ? {

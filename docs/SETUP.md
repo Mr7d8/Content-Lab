@@ -35,6 +35,10 @@ Both count toward the monthly cap set in the spend chip on the board ($5 by defa
    - `20261003000000_v2_boards.sql`: board membership, scan and decode status, the public `covers` bucket, decode spend.
    - `20261003000100_scan_json.sql`: the latest scan row per ad.
    - `20261004000000_scan_up_to_200.sql`: up to 200 ads per scan.
+   - `20261004000100_moroccan_gate.sql`: Moroccan boards, advertisers and the landing page and cover check.
+   - `20261005000000_manual_schedule.sql`: boards scan only when asked.
+   - `20261006000000_combined_boards.sql`: boards with several searches.
+   - `20261007000000_saved_videos.sql`: decoded ads keep their video (the public `videos` bucket).
 3. Add yourself to the allowlist (only listed emails can see any data):
 
    ```sql
@@ -89,7 +93,7 @@ A scan started by the cron finishes on its own: Apify calls `/api/apify/webhook`
 
 ## Known limits
 
-- **Creative Center video links** expire after about 6 hours. Covers are cached, so the board stays visual; the inspector's player needs a recent scan. Decoding fetches a fresh copy of the video itself.
+- **Creative Center video links** expire after about 6 hours. Covers are cached, so the board stays visual. Pressing play on an older ad asks DD (Apify) for a fresh link, about a cent each. A decoded ad's video is saved with it (or with **Save** on ads decoded earlier), so it plays for good, even after a rescan. Saved videos count toward Supabase storage (1 GB on Free, a few MB each).
 - **Industry filters** need Creative Center keys such as `label_22110000000`. Boards with a plain word (for example `ecommerce`) scan every industry for their country and objective.
 - **Budget tier** in the inspector is Creative Center's cost index (0, 1, 2), shown as Low, Medium, High.
 - Videos over 14 MB are decoded from a lower resolution copy, when the source has one.

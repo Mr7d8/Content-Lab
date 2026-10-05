@@ -23,26 +23,38 @@ function statsFor(ad: BoardAd, source: string): { label: string; value: string }
 }
 
 // Creative Center video links expire about 6 hours after a scan. Pressing
-// play on such an ad asks the server for a fresh link (a scraper run, about a
-// cent), so only ads someone wants to watch cost anything. Fresh links and
-// refreshes under way are kept for the tab by ad.
+// play on such an ad asks the server for a fresh link (a DD run, about a
+// cent), so only ads someone wants to watch cost anything. A decoded ad's
+// video can be saved with it instead, so it plays for good. What came back,
+// and requests under way, are kept for the tab by ad.
 const freshVideos = new Map<string, string>();
-const refreshing = new Map<string, Promise<string>>();
+const savedVideos = new Map<string, string>();
+const pendingVideos = new Map<string, Promise<string>>();
 
-function refreshVideo(id: string): Promise<string> {
-  let pending = refreshing.get(id);
+type VideoAsk = 'refresh' | 'save';
+
+function askVideo(ask: VideoAsk, id: string): Promise<string> {
+  const key = `${ask}:${id}`;
+  let pending = pendingVideos.get(key);
   if (!pending) {
     pending = (async () => {
-      const res = await fetch(`/api/ads/${id}/video/refresh`, { method: 'POST' });
+      const res = await fetch(`/api/ads/${id}/video/${ask}`, { method: 'POST' });
       const body = (await res.json().catch(() => null)) as { ok: boolean; video?: string; message?: string } | null;
-      if (!body?.ok || !body.video) throw new Error(body?.message ?? `Could not load the video (HTTP ${res.status})`);
-      freshVideos.set(id, body.video);
+      if (!body?.ok || !body.video) throw new Error(body?.message ?? `Could not ${ask === 'save' ? 'save' : 'load'} the video (HTTP ${res.status})`);
+      (ask === 'save' ? savedVideos : freshVideos).set(id, body.video);
       return body.video;
     })();
-    pending.catch(() => undefined).finally(() => refreshing.delete(id));
-    refreshing.set(id, pending);
+    pending.catch(() => undefined).finally(() => pendingVideos.delete(key));
+    pendingVideos.set(key, pending);
   }
   return pending;
+}
+
+// "Noon-7681200654287634439.mp4": who made it, and which ad.
+function videoFileName(ad: BoardAd, url: string): string {
+  const who = (ad.advertiser ?? ad.handle ?? 'ad').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'ad';
+  const ext = /\.(mp4|webm|mov)(?:[?#]|$)/i.exec(url)?.[1] ?? 'mp4';
+  return `${who}-${ad.externalId}.${ext}`;
 }
 
 // The ad as a full-bleed card: video or cover, with name, caption, numbers and
@@ -65,15 +77,22 @@ function MediaCard({
   // Links the browser could not play.
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
   const [fresh, setFresh] = useState<string | null>(() => freshVideos.get(ad.id) ?? null);
-  const [loading, setLoading] = useState(() => refreshing.has(ad.id));
+  const [loading, setLoading] = useState(() => pendingVideos.has(`refresh:${ad.id}`));
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [savedHere, setSavedHere] = useState<string | null>(() => savedVideos.get(ad.id) ?? null);
+  // The board's copy (decodes save theirs), else one saved from this tab.
+  const saved = ad.videoSaved ? ad.video : savedHere;
+  const [saving, setSaving] = useState(() => pendingVideos.has(`save:${ad.id}`));
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const soundOn = useSoundOn();
   // The browser refused to start this video with sound before any click.
   const [blocked, setBlocked] = useState(false);
   const muted = !soundOn || blocked;
   const soundButton = useRef<HTMLButtonElement>(null);
-  const src = [ad.video, fresh].find((u): u is string => !!u && !failed.has(u)) ?? null;
+  // A copy saved in this tab comes last, so saving never restarts a video
+  // that is already playing.
+  const src = [ad.video, fresh, saved].find((u): u is string => !!u && !failed.has(u)) ?? null;
   const playable = !!src;
   // No link that plays: pressing play fetches a fresh one.
   const refreshable = !src && ad.source === 'tiktok_creative_center';
@@ -81,7 +100,7 @@ function MediaCard({
   const loadVideo = useCallback(() => {
     setLoading(true);
     setRefreshError(null);
-    refreshVideo(ad.id).then(
+    askVideo('refresh', ad.id).then(
       (url) => {
         if (!live.current) return;
         setLoading(false);
@@ -94,14 +113,31 @@ function MediaCard({
       },
     );
   }, [ad.id]);
+  const saveVideo = useCallback(() => {
+    setSaving(true);
+    setSaveError(null);
+    askVideo('save', ad.id).then(
+      (url) => {
+        if (!live.current) return;
+        setSaving(false);
+        setSavedHere(url);
+      },
+      (e: unknown) => {
+        if (!live.current) return;
+        setSaving(false);
+        setSaveError((e as Error).message);
+      },
+    );
+  }, [ad.id]);
   useEffect(() => {
     live.current = true;
-    // Back on an ad whose video was still loading: pick it up when it lands.
-    if (refreshing.has(ad.id)) loadVideo();
+    // Back on an ad whose video was still loading or saving: pick it up when it lands.
+    if (pendingVideos.has(`refresh:${ad.id}`)) loadVideo();
+    if (pendingVideos.has(`save:${ad.id}`)) saveVideo();
     return () => {
       live.current = false;
     };
-  }, [ad.id, loadVideo]);
+  }, [ad.id, loadVideo, saveVideo]);
   // The server only refreshes a link it takes for expired; one that still
   // would not play has nothing left to try.
   const noPlay = !loading && !refreshError && !!fresh && failed.has(fresh) ? 'The video link no longer plays: scan the board again' : null;
@@ -190,6 +226,10 @@ function MediaCard({
               <span className="liquid-dark mono flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px]" role="status">
                 <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-white" /> Loading video
               </span>
+            ) : saved ? (
+              <span className="liquid-dark mono rounded-full px-2.5 py-1 text-[10px]" title="Saved with the ad: it plays even after its links expire or a rescan.">
+                Saved
+              </span>
             ) : !playable && !refreshable && (
               <span className="liquid-dark mono rounded-full px-2.5 py-1 text-[10px]" title="The video link expired. Scan again to play it here; decoding fetches its own copy.">
                 Video expired
@@ -241,9 +281,9 @@ function MediaCard({
             </motion.button>
           )}
         </AnimatePresence>
-        {problem && !loading && !playable && (
+        {(saveError ?? (problem && !loading && !playable ? problem : null)) && (
           <p role="alert" className="liquid-dark absolute inset-x-6 top-[calc(42%+40px)] rounded-[14px] px-3 py-2 text-center text-[11.5px] leading-snug text-white" dir="auto">
-            {problem}
+            {saveError ?? problem}
           </p>
         )}
 
@@ -289,6 +329,19 @@ function MediaCard({
                 )}
               </button>
             )}
+            {status === 'done' && (saved ? (
+              <a href={`${saved}?download=${encodeURIComponent(videoFileName(ad, saved))}`} download className="liquid-dark grid h-9 w-9 shrink-0 place-items-center rounded-full" aria-label="Download the video" title="Download the video">
+                <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden><path d="M7 1.5v8M3.8 6.5 7 9.7l3.2-3.2M2 12.5h10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </a>
+            ) : (
+              <button type="button" onClick={saveVideo} disabled={saving} className="liquid-dark grid h-9 w-9 shrink-0 place-items-center rounded-full" aria-label="Save the video" title="Save the video with the ad, so it stays after rescans">
+                {saving ? (
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+                ) : (
+                  <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden><path d="M3.5 1.8h7a.7.7 0 0 1 .7.7v10l-4.2-2.9-4.2 2.9v-10a.7.7 0 0 1 .7-.7Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>
+                )}
+              </button>
+            ))}
             {status === 'done' ? (
               <button type="button" onClick={onDecode} className="liquid-dark grid h-9 w-9 shrink-0 place-items-center rounded-full" aria-label="Decode again" title="Decode again">
                 <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden><path d="M12 7a5 5 0 1 1-1.5-3.6M12 2v2.6H9.4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>

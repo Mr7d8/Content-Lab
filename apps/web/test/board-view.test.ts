@@ -32,7 +32,7 @@ function item(over: Partial<Tables<'items'>> = {}, scan: Record<string, unknown>
     id: 'i1', source: 'tiktok_creative_center', source_url: 'https://ads.tiktok.com/business/creativecenter/topads/7681200654287634439/',
     external_id: '7681200654287634439', advertiser: null, account_handle: null, region: 'MA', industry: null, objective_source: null,
     posted_at: null, collected_at: NOW.toISOString(), duration_s: null, thumbnail_url: null, raw_json: {}, decode_status: null,
-    decode_error: null, decoded_at: null, decode_cost_usd: 0, market_json: null,
+    decode_error: null, decoded_at: null, decode_cost_usd: 0, market_json: null, video_url: null,
     scan_json: { adId: '7681200654287634439', ctr: 0.94, likes: 3973, costIndex: 1, brandName: 'Noon', adText: 'Big sale', durationSeconds: 28.3, coverImageUrl: 'https://cdn/c.jpg', ...scan },
     scanned_at: NOW.toISOString(),
     ...over,
@@ -42,7 +42,7 @@ function item(over: Partial<Tables<'items'>> = {}, scan: Record<string, unknown>
 function ad(id: string, over: Partial<BoardAd> = {}): BoardAd {
   return {
     id, source: 'tiktok_creative_center', externalId: id, sourceUrl: '', rank: null, advertiser: null, handle: null, caption: null, region: null,
-    durationS: null, cover: null, video: null, metrics: {}, decode: { status: 'none', error: null, at: null }, labels: null, breakdown: null, transcript: null,
+    durationS: null, cover: null, video: null, videoSaved: false, metrics: {}, decode: { status: 'none', error: null, at: null }, labels: null, breakdown: null, transcript: null,
     market: { verdict: 'unclear', elsewhere: null, reasons: [] },
     ...over,
   };
@@ -74,6 +74,12 @@ describe('toBoardAd', () => {
     const scan = { videoUrls: { '540p': 'https://v/540.mp4' } };
     expect(toBoardAd(item({}, { ...scan, mediaExpiresAt: '2026-10-02T13:00:00Z' }), 1, null, null, NOW).video).toBe('https://v/540.mp4');
     expect(toBoardAd(item({}, { ...scan, mediaExpiresAt: '2026-10-02T11:00:00Z' }), 1, null, null, NOW).video).toBeNull();
+  });
+
+  it('plays a saved video for good, whatever the scan link says', () => {
+    const saved = toBoardAd(item({ video_url: 'https://supa/videos/i1.mp4' }, { videoUrls: { '540p': 'https://v/540.mp4' }, mediaExpiresAt: '2026-10-02T11:00:00Z' }), 1, null, null, NOW);
+    expect(saved).toMatchObject({ video: 'https://supa/videos/i1.mp4', videoSaved: true });
+    expect(toBoardAd(item(), 1, null, null, NOW).videoSaved).toBe(false);
   });
 
   it('shows a decode cut off for over 6 minutes as failed, so it can be retried', () => {

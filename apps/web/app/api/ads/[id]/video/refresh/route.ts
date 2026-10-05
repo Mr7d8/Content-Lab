@@ -18,8 +18,8 @@ export async function POST(_request: Request, ctx: RouteContext<'/api/ads/[id]/v
   const admin = adminClient();
   const { data: item } = await admin.from('items').select('*').eq('id', id).maybeSingle();
   if (!item) return Response.json({ ok: false, message: 'Ad not found.' }, { status: 404 });
-  // Another tab may have refreshed it already.
-  const current = scanVideoUrl(obj(item.scan_json));
+  // A saved copy, or a link another tab refreshed already.
+  const current = item.video_url ?? scanVideoUrl(obj(item.scan_json));
   if (current) return Response.json({ ok: true, video: current });
   if (item.source !== 'tiktok_creative_center') return Response.json({ ok: false, message: 'The video link expired: scan the board again.' }, { status: 410 });
   const result = await refreshCreativeCenterMedia(admin, item, { exclusive: true });

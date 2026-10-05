@@ -245,6 +245,7 @@ export type Database = {
           scan_json: Json | null;
           scanned_at: string | null;
           market_json: Json | null;
+          video_url: string | null;
         };
         Insert: {
           id?: string;
@@ -268,6 +269,7 @@ export type Database = {
           scan_json?: Json | null;
           scanned_at?: string | null;
           market_json?: Json | null;
+          video_url?: string | null;
         };
         Update: {
           id?: string;
@@ -291,6 +293,7 @@ export type Database = {
           scan_json?: Json | null;
           scanned_at?: string | null;
           market_json?: Json | null;
+          video_url?: string | null;
         };
         Relationships: [];
       };

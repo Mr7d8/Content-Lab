@@ -5,9 +5,9 @@ import type { AdminClient } from './admin';
 import { runActorSync } from './apify';
 import { adDuration, decodeRows, jevState } from './decode-records';
 import { refreshCreativeCenterMedia } from './video-refresh';
+import { saveVideo, type Video } from './videos';
 
 type Item = Tables<'items'>;
-type Video = { data: Uint8Array; mimeType: string };
 
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
@@ -61,7 +61,7 @@ async function metaVideo(item: Item): Promise<Video> {
 async function organicVideo(item: Item): Promise<Video> {
   const actor = process.env.APIFY_TIKTOK_ACTOR_ID || 'clockworks~tiktok-scraper';
   const token = apifyToken();
-  const rows = await runActorSync(actor, {
+  const { rows } = await runActorSync(actor, {
     postURLs: [item.source_url], shouldDownloadVideos: true, shouldDownloadCovers: false,
     shouldDownloadSubtitles: false, shouldDownloadSlideshowImages: false, resultsPerPage: 1,
   }, { token, timeoutS: 180, maxItems: 1 });
@@ -69,6 +69,17 @@ async function organicVideo(item: Item): Promise<Video> {
   const media = Array.isArray(row?.mediaUrls) ? row.mediaUrls.find((u): u is string => typeof u === 'string') : undefined;
   if (!media) throw new Error('The TikTok scraper returned no video for this post');
   return download(media, new URL(media).hostname === 'api.apify.com' ? { Authorization: `Bearer ${token}` } : {});
+}
+
+// An ad's video, for decoding or saving: the saved copy when there is one,
+// else from the source.
+export async function adVideo(admin: AdminClient, item: Item): Promise<Video> {
+  if (item.video_url) {
+    const saved = await download(item.video_url).catch(() => null);
+    if (saved) return saved;
+  }
+  if (item.source === 'tiktok_creative_center') return creativeCenterVideo(admin, item);
+  return item.source === 'meta_ad_library' ? metaVideo(item) : organicVideo(item);
 }
 
 export type DecodeResult = { ok: true; costUsd: number } | { ok: false; message: string };
@@ -89,11 +100,20 @@ export async function decodeAd(admin: AdminClient, itemId: string): Promise<Deco
 
   // decoded_at marks the start too, so a cut-off decode shows as stale later.
   await admin.from('items').update({ decode_status: 'running', decode_error: null, decoded_at: new Date().toISOString() }).eq('id', item.id);
+  let saving: Promise<void> | null = null;
   try {
     const ai = createAIProviders(process.env, ['decoder', 'classifier'] as const);
-    const video = item.source === 'tiktok_creative_center'
-      ? await creativeCenterVideo(admin, item)
-      : item.source === 'meta_ad_library' ? await metaVideo(item) : await organicVideo(item);
+    const video = await adVideo(admin, item);
+    // Kept while the decode runs, so the ad plays and decodes again after its
+    // links expire or a rescan replaces them. A failed save never fails the decode.
+    if (!item.video_url) {
+      saving = saveVideo(admin, item.id, video).then(
+        (r) => {
+          if (!r.ok) console.error(`Save the video of ${item.id}: ${r.message}`);
+        },
+        (e: unknown) => console.error(`Save the video of ${item.id}: ${(e as Error).message}`),
+      );
+    }
     const seconds = decodeSeconds(adDuration(item));
     const scan = obj(item.scan_json);
     const decoded = await ai.decoder.decode(video, seconds, {
@@ -117,8 +137,10 @@ export async function decodeAd(admin: AdminClient, itemId: string): Promise<Deco
       decode_cost_usd: Number((Number(item.decode_cost_usd) + cost).toFixed(4)),
       duration_s: item.duration_s ?? adDuration(item),
     }).eq('id', item.id);
+    await saving;
     return { ok: true, costUsd: cost };
   } catch (e) {
+    await saving;
     const message = (e as Error).message.slice(0, 500);
     await admin.from('items').update({ decode_status: 'failed', decode_error: message }).eq('id', item.id);
     return { ok: false, message };

@@ -7,16 +7,17 @@ export const maxDuration = 30;
 
 const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 
-// The ad's video from its scan link, served from our own origin so the
-// inspector can draw its frames onto a canvas and save them. Only ever
-// fetches the link stored on the ad.
+// The ad's video (its saved copy, else its scan link), served from our own
+// origin so the inspector can draw its frames onto a canvas and save them.
+// Only ever fetches a link stored on the ad.
 export async function GET(request: Request, ctx: RouteContext<'/api/ads/[id]/video'>) {
   const denied = await requireTeam();
   if (denied) return denied;
   const { id } = await ctx.params;
   const supabase = await createClient();
-  const { data: item } = await supabase.from('items').select('scan_json').eq('id', id).maybeSingle();
-  const url = scanVideoUrl(obj(item?.scan_json));
+  // Every column, so this works before the saved-videos migration too.
+  const { data: item } = await supabase.from('items').select('*').eq('id', id).maybeSingle();
+  const url = item?.video_url ?? scanVideoUrl(obj(item?.scan_json));
   if (!url) return Response.json({ ok: false, message: 'The video link expired: scan the board again.' }, { status: 410 });
 
   const range = chunkRange(request.headers.get('range'));

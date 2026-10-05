@@ -50,7 +50,7 @@ async function landingUrls(items: Item[]): Promise<{ urls: Map<string, string>; 
   const cc = items.filter((i) => i.source === 'tiktok_creative_center');
   if (!cc.length) return { urls, costUsd: 0 };
   const actor = process.env.APIFY_CREATIVE_CENTER_ACTOR_ID || 'fetch_cat~tiktok-ads-library-scraper';
-  const rows = await runActorSync(actor, { startUrls: cc.map((i) => ({ url: i.source_url })), maxItems: cc.length * 2 }, {
+  const { rows } = await runActorSync(actor, { startUrls: cc.map((i) => ({ url: i.source_url })), maxItems: cc.length * 2 }, {
     token: apifyToken(), timeoutS: 120, maxItems: cc.length * 2, what: 'reading the ads\' detail pages',
   });
   for (const row of rows) {
