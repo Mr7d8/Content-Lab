@@ -25,10 +25,12 @@ type Rect = { x0: number; y0: number; x1: number; y1: number };
 
 // Covers fly in from their tiles in the Top ads list, each once its image
 // has loaded (cover-loader: a few at a time, best ranked first, shared with
-// the list), and one after another: departures at least ENTRY_S / ads apart
-// (50 ms at most), each flight 0.8 s. The flight eases in and out, so it is
-// seen leaving its tile, not only landing.
-const ENTRY_S = 1.6;
+// the list), and one after another: departures ENTRY_S / ads apart (GAP_S at
+// most), each flight 0.8 s. So only about a dozen are in the air at once
+// (FLY_S / gap), and a full board takes about ENTRY_S to arrive. The flight
+// eases in and out, so it is seen leaving its tile, not only landing.
+const ENTRY_S = 6;
+const GAP_S = 0.12;
 const FLY_S = 0.8;
 const EASE_FLY = [0.45, 0, 0.2, 1] as const;
 
@@ -165,7 +167,7 @@ export function PerfMap({
     const list = document.querySelector('[data-tiles]')?.getBoundingClientRect();
     const tileW = Array.from(document.querySelectorAll('[data-tile]'), (t) => t.getBoundingClientRect().width).find((w) => w > 0) ?? T.w * 2;
     // Spaced by the whole map's count, so covers that load together still go one by one.
-    const step = Math.min(0.05, ENTRY_S / plotted.length) * 1000;
+    const step = Math.min(GAP_S, ENTRY_S / plotted.length) * 1000;
     let at = Math.max(performance.now(), lastTakeoff.current + step);
     fresh.forEach((a) => {
       const p = geometry.at.get(a.id);
