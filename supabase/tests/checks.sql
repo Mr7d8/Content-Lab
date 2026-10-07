@@ -32,8 +32,9 @@ do $$ declare n int; who uuid; begin
   if n <> 1 then raise exception 'FAIL label filter'; end if;
   select created_by into who from public.runs;
   if who <> '11111111-1111-1111-1111-111111111111' then raise exception 'FAIL created_by default'; end if;
+  -- The member, and the admin the access requests migration adds.
   select count(*) into n from public.team_members;
-  if n <> 1 then raise exception 'FAIL team member cannot read team'; end if;
+  if n <> 2 then raise exception 'FAIL team member cannot read team'; end if;
   raise notice 'PASS team member flow, label filter, created_by default';
   begin
     insert into public.team_members (email) values ('friend@example.com');
@@ -373,5 +374,74 @@ do $$ declare board uuid; batch uuid := gen_random_uuid(); n int; begin
   if n <> 2 then raise exception 'FAIL batch runs (%)', n; end if;
   if (select jsonb_array_length(searches) from public.watchlists where id = board) <> 2 then raise exception 'FAIL searches stored'; end if;
   raise notice 'PASS combined boards and scan batches';
+end $$;
+rollback;
+
+-- Access requests: filed by the server at sign in, decided by admins
+insert into public.team_members (email, is_admin) values ('admin@example.com', true);
+insert into public.access_requests (email) values ('newcomer@example.com'), ('spammer@example.com');
+do $$ begin
+  if not exists (select 1 from public.team_members where email = 'ossamaberj@gmail.com' and is_admin) then raise exception 'FAIL admin not seeded'; end if;
+  if has_table_privilege('anon', 'public.access_requests', 'select') then raise exception 'FAIL anon can read access requests'; end if;
+  if has_function_privilege('anon', 'public.is_team_admin()', 'execute') then raise exception 'FAIL anon can call is_team_admin'; end if;
+  raise notice 'PASS admin seeded, access requests closed to anon';
+end $$;
+
+begin;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111","email":"member@example.com"}';
+do $$ declare n int; begin
+  if public.is_team_admin() then raise exception 'FAIL member counted as admin'; end if;
+  select count(*) into n from public.access_requests;
+  if n <> 0 then raise exception 'FAIL member sees % requests', n; end if;
+  update public.access_requests set status = 'accepted';
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FAIL member decided a request'; end if;
+  begin
+    insert into public.access_requests (email) values ('friend@example.com');
+    raise exception 'FAIL member filed a request';
+  exception when insufficient_privilege then null; end;
+  raise notice 'PASS members cannot see, file or decide requests';
+end $$;
+rollback;
+
+begin;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"33333333-3333-3333-3333-333333333333","email":"newcomer@example.com"}';
+do $$ declare n int; begin
+  select count(*) into n from public.access_requests;
+  if n <> 0 then raise exception 'FAIL requester sees % requests', n; end if;
+  begin
+    insert into public.team_members (email) values ('newcomer@example.com');
+    raise exception 'FAIL requester added themselves to the team';
+  exception when insufficient_privilege then null; end;
+  raise notice 'PASS requesters cannot see or accept requests';
+end $$;
+rollback;
+
+begin;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"44444444-4444-4444-4444-444444444444","email":"Admin@Example.com"}';
+do $$ declare n int; begin
+  if not public.is_team_admin() then raise exception 'FAIL admin not recognised'; end if;
+  select count(*) into n from public.access_requests where status = 'pending';
+  if n <> 2 then raise exception 'FAIL admin sees % pending requests', n; end if;
+  -- Accepting twice leaves one row.
+  insert into public.team_members (email) values ('newcomer@example.com') on conflict (email) do nothing;
+  insert into public.team_members (email) values ('newcomer@example.com') on conflict (email) do nothing;
+  update public.access_requests set status = 'accepted', decided_at = now(), decided_by = 'admin@example.com' where email = 'newcomer@example.com';
+  update public.access_requests set status = 'declined', decided_at = now(), decided_by = 'admin@example.com' where email = 'spammer@example.com';
+  select count(*) into n from public.access_requests where status = 'pending';
+  if n <> 0 then raise exception 'FAIL requests not decided'; end if;
+  if not exists (select 1 from public.team_members where email = 'newcomer@example.com' and not is_admin) then raise exception 'FAIL accepted email not on the team'; end if;
+  begin
+    insert into public.team_members (email, is_admin) values ('boss@example.com', true);
+    raise exception 'FAIL admin made another admin';
+  exception when insufficient_privilege then null; end;
+  begin
+    update public.access_requests set status = 'maybe' where email = 'spammer@example.com';
+    raise exception 'FAIL unknown request status accepted';
+  exception when check_violation then null; end;
+  raise notice 'PASS admins accept and decline requests, add members but not admins';
 end $$;
 rollback;

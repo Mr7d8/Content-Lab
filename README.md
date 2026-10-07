@@ -12,6 +12,8 @@ Status: **v2**. One board page, scans in about a minute, decodes on demand. See 
 4. **Decode, when you ask.** Pick one ad, the top 10, or drag across the map. Each decode sends the video to Gemini once: speech, what is on screen second by second, the hook, each script beat, the offer, the call to action and why it works. TypeSafe Jev then tags it with the taxonomy (format, hook type, structure and more).
 5. **The board.** KPIs, the top ads, a performance map of every cover (gray until decoded), the inspector with the video, its breakdown, the ad frame by frame (image, what is on screen, the text, what is said, at each moment) and its timing and craft, and "Which formats win?" by format, hook, advertiser or length. Frame images are drawn from the video in the browser the first time a decoded ad is opened, then kept in Supabase Storage. A market filter keeps the ads that look made for Moroccan shoppers (dirhams, Darija, Moroccan places, +212 numbers, .ma sites) apart from those made for the Gulf, Egypt, Algeria or elsewhere; it reads the ad text, and after a decode the on-screen text and speech too.
 
+Access: only emails on the team allowlist get a sign-in link. Anyone else who signs in files an access request, which an admin accepts or declines under **Access** in the top bar.
+
 ## Layout
 
 | Path | What |

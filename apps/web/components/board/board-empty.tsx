@@ -6,11 +6,11 @@ import { NewBoardDialog } from './new-board';
 import { TopBar } from './top-bar';
 
 // No boards yet: one call to action.
-export function BoardEmpty() {
+export function BoardEmpty({ access }: { access: { pending: number } | null }) {
   const [creating, setCreating] = useState(false);
   return (
     <MotionConfig reducedMotion="user">
-      <TopBar boards={[]} currentId={null} spend={null} onNew={() => setCreating(true)} />
+      <TopBar boards={[]} currentId={null} spend={null} access={access} onNew={() => setCreating(true)} />
       <main className="mx-auto flex min-h-[70vh] max-w-2xl flex-col items-start justify-center px-4">
         <p className="mono text-faint">Content Lab</p>
         <h1 className="mt-3 text-[40px] font-semibold leading-[1.04] tracking-[-0.035em] sm:text-[56px]">

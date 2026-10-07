@@ -16,3 +16,16 @@ export function authLandingTarget(url: URL): URL | null {
   }
   return null;
 }
+
+export type HashLanding = { session: { accessToken: string; refreshToken: string } } | { error: string } | null;
+
+// Links sent with the implicit flow (the one an admin's Accept emails) bring
+// the session, or the error, in the #fragment, which only the browser sees.
+export function hashLanding(hash: string): HashLanding {
+  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  const accessToken = params.get('access_token');
+  const refreshToken = params.get('refresh_token');
+  if (accessToken && refreshToken) return { session: { accessToken, refreshToken } };
+  const error = params.get('error_description') ?? params.get('error_code') ?? params.get('error');
+  return error ? { error } : null;
+}

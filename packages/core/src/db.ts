@@ -5,6 +5,30 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type Database = {
   public: {
     Tables: {
+      access_requests: {
+        Row: {
+          email: string;
+          status: string;
+          requested_at: string;
+          decided_at: string | null;
+          decided_by: string | null;
+        };
+        Insert: {
+          email: string;
+          status?: string;
+          requested_at?: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+        };
+        Update: {
+          email?: string;
+          status?: string;
+          requested_at?: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+        };
+        Relationships: [];
+      };
       advertisers: {
         Row: {
           key: string;
@@ -643,16 +667,19 @@ export type Database = {
           email: string;
           display_name: string | null;
           added_at: string;
+          is_admin: boolean;
         };
         Insert: {
           email: string;
           display_name?: string | null;
           added_at?: string;
+          is_admin?: boolean;
         };
         Update: {
           email?: string;
           display_name?: string | null;
           added_at?: string;
+          is_admin?: boolean;
         };
         Relationships: [];
       };
@@ -720,6 +747,7 @@ export type Database = {
     Views: { [_ in never]: never };
     Functions: {
       claim_market_checks: { Args: { board: string; max_items: number; stale?: string }; Returns: { item_id: string }[] };
+      is_team_admin: { Args: Record<PropertyKey, never>; Returns: boolean };
       is_team_member: { Args: Record<PropertyKey, never>; Returns: boolean };
       month_spend_usd: { Args: Record<PropertyKey, never>; Returns: number };
     };

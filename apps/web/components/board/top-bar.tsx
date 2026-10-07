@@ -8,7 +8,7 @@ import type { BoardSummary } from '@/lib/board';
 import { meterState } from '@/lib/watchlists';
 import { Popover } from './popover';
 
-function Mark() {
+export function Mark() {
   return (
     <span aria-hidden className="grid h-7 w-7 grid-cols-2 gap-[2px] rounded-[8px] bg-ink p-[5px]">
       <span className="rounded-[2px] bg-white" />
@@ -131,7 +131,21 @@ function SpendChip({ spend }: { spend: { month: number; cap: number; sweepsEnabl
   );
 }
 
-export function TopBar({ boards, currentId, spend, onNew }: { boards: BoardSummary[]; currentId: string | null; spend: { month: number; cap: number; sweepsEnabled: boolean } | null; onNew: () => void }) {
+// Admins only: the team access page, with the requests waiting.
+function AccessChip({ pending }: { pending: number }) {
+  return (
+    <Link href="/admin" className="chip hover:bg-white/85" title="Team access" aria-label={pending ? `Team access: ${pending} waiting` : 'Team access'}>
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
+        <circle cx="5.5" cy="4.5" r="2.3" fill="none" stroke="currentColor" strokeWidth="1.4" />
+        <path d="M1.5 12c.4-2.3 2-3.6 4-3.6s3.6 1.3 4 3.6M11 4.5v3M9.5 6h3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      </svg>
+      <span className="hidden sm:inline">Access</span>
+      {pending > 0 && <span className="grid h-[18px] min-w-[18px] place-items-center rounded-full bg-red px-1 text-[10.5px] font-semibold tabular-nums text-white">{pending}</span>}
+    </Link>
+  );
+}
+
+export function TopBar({ boards, currentId, spend, access, onNew }: { boards: BoardSummary[]; currentId: string | null; spend: { month: number; cap: number; sweepsEnabled: boolean } | null; access: { pending: number } | null; onNew: () => void }) {
   return (
     <header className="sticky top-0 z-40 px-3 pt-3 sm:px-5">
       <div className="liquid-bar mx-auto flex max-w-[1440px] items-center gap-1.5 rounded-full py-1.5 pl-2 pr-1.5">
@@ -143,6 +157,7 @@ export function TopBar({ boards, currentId, spend, onNew }: { boards: BoardSumma
         <BoardSwitcher boards={boards} currentId={currentId} onNew={onNew} />
         <div className="ml-auto flex items-center gap-1.5">
           <button type="button" className="chip hidden sm:inline-flex" onClick={onNew}>+ New board</button>
+          {access && <AccessChip pending={access.pending} />}
           {spend && <SpendChip spend={spend} />}
           <form action="/auth/signout" method="post">
             <button type="submit" className="chip" aria-label="Sign out" title="Sign out">

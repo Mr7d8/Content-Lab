@@ -39,10 +39,12 @@ Both count toward the monthly cap set in the spend chip on the board ($5 by defa
    - `20261005000000_manual_schedule.sql`: boards scan only when asked.
    - `20261006000000_combined_boards.sql`: boards with several searches.
    - `20261007000000_saved_videos.sql`: decoded ads keep their video (the public `videos` bucket).
-3. Add yourself to the allowlist (only listed emails can see any data):
+   - `20261008000000_access_requests.sql`: access requests, and ossamaberj@gmail.com as the admin who accepts them.
+3. The allowlist: only emails in `public.team_members` can see any data. Signing in with any other email sends no link: it files an access request and the login page says it was sent. An admin (`is_admin` in `team_members`) sees the requests under **Access** in the top bar (with the number waiting) and accepts or declines them; Accept adds the email to the team and emails it a sign-in link. Another admin is added in the SQL editor:
 
    ```sql
-   insert into public.team_members (email) values ('you@example.com');
+   insert into public.team_members (email, is_admin) values ('you@example.com', true)
+   on conflict (email) do update set is_admin = true;
    ```
 
 4. Authentication > URL Configuration:

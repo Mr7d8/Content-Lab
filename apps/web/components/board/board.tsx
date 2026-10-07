@@ -171,7 +171,7 @@ export function Board({ data }: { data: BoardData }) {
   return (
     <MotionConfig reducedMotion="user">
       <Ambient color={glow} />
-      <TopBar boards={data.boards} currentId={board.id} spend={data.spend} onNew={() => setCreating(true)} />
+      <TopBar boards={data.boards} currentId={board.id} spend={data.spend} access={data.access} onNew={() => setCreating(true)} />
       <main className="relative z-[1] mx-auto max-w-[1440px] px-4 pb-32 sm:px-6">
         {/* The text over the glow takes a dark shade of its color, to stay readable. */}
         <div className="glow-ink" style={{ '--sub': ink.sub, '--faint': ink.faint } as React.CSSProperties}>

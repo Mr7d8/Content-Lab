@@ -1,5 +1,6 @@
 import 'server-only';
 import { boardSourcesLabel, type Tables } from '@content-lab/core';
+import { accessSummary } from './access';
 import type { ServerClient } from './supabase/server';
 import { onBoard, scanCutoff, scanOfRuns, toBoardAd, type BoardAd } from './board-view';
 import type { GateStatus } from './gate';
@@ -25,6 +26,8 @@ export type BoardData = {
   gate: { pending: number; rejected: number };
   boards: BoardSummary[];
   spend: { month: number; cap: number; sweepsEnabled: boolean };
+  // Admins: requests waiting for them (null for everyone else).
+  access: { pending: number } | null;
 };
 
 export async function listBoards(supabase: ServerClient): Promise<BoardSummary[]> {
@@ -45,7 +48,7 @@ export async function defaultBoardId(supabase: ServerClient): Promise<string | n
 }
 
 export async function loadBoard(supabase: ServerClient, boardId: string): Promise<BoardData | null> {
-  const [{ data: board }, { data: members }, { data: scan }, { data: finished }, boards, { data: settings }, { data: spend }] = await Promise.all([
+  const [{ data: board }, { data: members }, { data: scan }, { data: finished }, boards, { data: settings }, { data: spend }, access] = await Promise.all([
     supabase.from('watchlists').select('*').eq('id', boardId).maybeSingle(),
     supabase.from('board_items').select('rank, last_seen_at, status, item:items(*)').eq('watchlist_id', boardId),
     supabase.from('runs').select('id, status, synced_count, items_requested, error, started_at, finished_at, batch_id')
@@ -55,6 +58,7 @@ export async function loadBoard(supabase: ServerClient, boardId: string): Promis
     listBoards(supabase),
     supabase.from('app_settings').select('monthly_spend_cap_usd, sweeps_enabled').maybeSingle(),
     supabase.rpc('month_spend_usd'),
+    accessSummary(supabase),
   ]);
   if (!board) return null;
   // A scan of several searches is the latest run with the others of its batch.
@@ -100,5 +104,6 @@ export async function loadBoard(supabase: ServerClient, boardId: string): Promis
       cap: Number(settings?.monthly_spend_cap_usd ?? 5),
       sweepsEnabled: settings?.sweeps_enabled ?? true,
     },
+    access,
   };
 }
