@@ -19,7 +19,7 @@ What things cost (estimates, checked against the bills):
 
 | Action | Cost |
 | --- | --- |
-| Scan of 30 ads | about $0.10 (Apify, pay per result); 200 ads about $0.61 |
+| Scan of 30 ads | about $0.05 on Creative Center, $0.03 on Meta (Apify, pay per result); a Creative Center board with an objective or words asks for twice its ads |
 | Decode of one ad | about $0.01 to $0.02 (Gemini video plus Jev) |
 
 Both count toward the monthly cap set in the spend chip on the board ($5 by default).
@@ -60,7 +60,7 @@ Create a Vercel project from this repository with the root directory `apps/web` 
 - `APIFY_TOKEN`
 - `GEMINI_API_KEY`, `TYPESAFE_API_KEY`
 - `CRON_SECRET`: any long random string. Vercel Cron sends it to the daily scan route, and it signs the Apify webhook that finishes a scan when no board is open.
-- optionally `NEXT_PUBLIC_SITE_URL`, `GEMINI_MODEL`, `JEV_MODEL`, `APIFY_CREATIVE_CENTER_ACTOR_ID`, `APIFY_TIKTOK_ACTOR_ID`, `APIFY_META_ACTOR_ID` (Meta boards; curious_coder~facebook-ads-library-scraper by default)
+- optionally `NEXT_PUBLIC_SITE_URL`, `GEMINI_MODEL`, `JEV_MODEL`, `APIFY_TIKTOK_ACTOR_ID`, `APIFY_META_ACTOR_ID` (Meta boards; curious_coder~facebook-ads-library-scraper by default). Creative Center boards always use automation_craft~tiktok-creative-center-scraper; an `APIFY_CREATIVE_CENTER_ACTOR_ID` left in Vercel is ignored.
 
 Never prefix a secret with `NEXT_PUBLIC_`: that ships it to the browser. Vercel only applies new variables to new deployments, so redeploy after changing them.
 
@@ -94,6 +94,7 @@ A scan started by the cron finishes on its own: Apify calls `/api/apify/webhook`
 ## Known limits
 
 - **Video links** from a scan expire (Creative Center after about 6 hours, Meta after about a day). Covers are cached, so the board stays visual. An ad whose link expired offers **Rescan board** in the inspector: a full scan through DD (Apify) that brings new ads, and fresh links for the ads it finds again. Decoding and saving an ad need a live link too. A decoded ad's video is saved with it (or with **Save** on ads decoded earlier, while the link is live), so it plays for good, even after a rescan. Saved videos count toward Supabase storage (1 GB on Free, a few MB each).
+- **Creative Center without a login** shows one list of 20 ads per filter combination, and no keyword search. The scraper sweeps sort orders, industries and objectives for more ads (about 100 per country and period), and the scan keeps the ads that fit the board's objective. Advertiser, keyword and snowball boards keep the ads whose brand, caption or landing page holds their words, so they find few. Creative Center does not list Algeria, Tunisia, Lebanon or Iraq; MENA boards scan the other countries.
 - **Industry filters** need Creative Center keys such as `label_22110000000`. Boards with a plain word (for example `ecommerce`) scan every industry for their country and objective.
 - **Budget tier** in the inspector is Creative Center's cost index (0, 1, 2), shown as Low, Medium, High.
 - Videos over 14 MB are decoded from a lower resolution copy, when the source has one.

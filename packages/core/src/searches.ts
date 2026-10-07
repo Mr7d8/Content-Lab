@@ -1,5 +1,5 @@
 import type { Json, Tables } from './db';
-import { estimateScan } from './scan';
+import { estimateScan, scanAsk } from './scan';
 import { sourceLabel } from './sources';
 
 // What a board searches. Most boards have one search, kept in their own
@@ -48,9 +48,10 @@ export function boardSearches(board: Board): BoardSearch[] {
 // The sources a board's ads come from, in its searches' order.
 export const boardSources = (board: Board): string[] => [...new Set(boardSearches(board).map((s) => s.source))];
 
-// A scan of every search, each fetching up to the board's ads per scan.
+// A scan of every search, each fetching up to the board's ads per scan
+// (twice that for a Creative Center search that filters, scanAsk).
 export const boardScanEstimate = (board: Board & { max_items: number }): number =>
-  boardSearches(board).reduce((sum, s) => sum + estimateScan(board.max_items, s.source), 0);
+  boardSearches(board).reduce((sum, s) => sum + estimateScan(scanAsk({ ...s, max_items: board.max_items }), s.source), 0);
 
 // "Meta Ad Library + TikTok Creative Center"
 export const boardSourcesLabel = (board: Board): string => boardSources(board).map(sourceLabel).join(' + ');

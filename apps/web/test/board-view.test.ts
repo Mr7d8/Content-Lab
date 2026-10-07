@@ -267,6 +267,12 @@ describe('scanCutoff', () => {
     expect(scanCutoff([run('b', '2026-10-04T10:00:00Z', 30, { items_requested: 30 }), run('a', '2026-10-03T10:00:00Z', 99)])).toEqual({ cutoff: '2026-10-04T10:00:00Z', short: false });
   });
 
+  it('does not call a scan short for asking more ads than before', () => {
+    // The sweeping Creative Center scraper asks for 200 on a board with an objective.
+    expect(scanCutoff([run('b', '2026-10-07T13:00:00Z', 90, { items_requested: 200 }), run('a', '2026-10-05T15:13:16Z', 99)])).toEqual({ cutoff: '2026-10-07T13:00:00Z', short: false });
+    expect(scanCutoff([run('b', '2026-10-07T13:00:00Z', 19, { items_requested: 200 }), run('a', '2026-10-05T15:13:16Z', 99)])).toEqual({ cutoff: '2026-10-05T15:13:16Z', short: true });
+  });
+
   it('takes a scan of several searches as one, from its first start', () => {
     const runs = [
       run('b2', '2026-10-04T10:00:01Z', 70, { batch_id: 'x' }),

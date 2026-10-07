@@ -113,7 +113,7 @@ export async function decodeAd(admin: AdminClient, itemId: string): Promise<Deco
     const decoded = await ai.decoder.decode(video, seconds, {
       source: item.source,
       advertiser: item.advertiser,
-      caption: str(scan.adText) ?? str(scan.text) ?? scannedAd(item.source, scan)?.caption ?? null,
+      caption: scannedAd(item.source, scan)?.caption ?? str(scan.text) ?? null,
       durationS: adDuration(item),
     });
     const jev = await ai.classifier.answer(jevState(item, decoded.output), { ...buildQuestions(), ...passageQuestions(decoded.output.segments) });

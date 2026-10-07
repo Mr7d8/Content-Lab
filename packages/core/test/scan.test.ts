@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { creativeCenterAd, creativeCenterScanInput, estimateScan, metaAd, metaPageMatches, metaScanInput, organicAd, organicScanInput, scanBudget, scanMediaExpired, scanVideoUrl } from '../src/scan';
+import { creativeCenterAd, creativeCenterScanInput, creativeCenterTermMatches, creativeCenterTerms, estimateScan, metaAd, metaPageMatches, metaScanInput, organicAd, organicScanInput, scanAsk, scanBudget, scanMediaExpired, scanVideoUrl } from '../src/scan';
 import { ANY_REGION_COUNTRIES, fitsObjective } from '../src/sources';
 
-// Shape of a real fetch_cat/tiktok-ads-library-scraper row (2026-10-02 scan).
+// Shape of a real fetch_cat/tiktok-ads-library-scraper row (2026-10-02 scan),
+// the scraper Creative Center scans used before 2026-10-07.
 const ccRow = {
   ctr: 0.72, adId: '7681200654287634439', rank: 1, likes: 16, width: 720, height: 1280,
   adText: 'Discover relaxed resort dresses that feel as beautiful as they look.', source: 'creative_center',
@@ -14,13 +15,41 @@ const ccRow = {
   mediaExpiresAt: '2026-10-02T16:31:13.000Z', durationSeconds: 42.145,
 };
 
+// A row as automation_craft/tiktok-creative-center-scraper documents it
+// (its dataset schema and README, 2026-10-07).
+const acRow = {
+  type: 'material', materialId: '7681729212986212373', creativeCenterUrl: 'https://ads.tiktok.com/business/creativecenter/topads/7681729212986212373/pc/en',
+  brandName: 'Shein Shopping', adTitle: 'Nouvelle collection, livraison gratuite au Maroc', likes: 769, comments: 24, shares: 80, favorite: 3,
+  ctr: 0.95, costTier: 'medium', costTierCode: 2, industryKey: 'label_22102000000', industry: 'Apparel and Accessories',
+  objectiveKey: 'campaign_objective_conversion', objective: 'Conversions', countryCodes: ['MA'], landingPage: 'https://ma.shein.com/sale',
+  videoId: 'v10044g50000d3abc', videoDuration: 18.5, videoWidth: 720, videoHeight: 1280,
+  coverUrl: 'https://p16-common-sign.tiktokcdn.com/cover-ac.jpeg', videoUrl: 'https://cdn.test/ac-1080.mp4',
+  videoUrls: { '1080p': 'https://cdn.test/ac-1080.mp4', '720p': 'https://cdn.test/ac-720.mp4', '540p': 'https://cdn.test/ac-540.mp4', '360p': 'https://cdn.test/ac-360.mp4' },
+  mediaExpiresAt: '2026-10-08T04:30:20.000Z', country: 'MA', period: 180, orderBy: 'ctr', rankInList: 4, foundBy: 'country=MA period=180 order_by=ctr',
+  isNew: true, scrapedAt: '2026-10-07T12:00:00.000Z',
+};
+
 const board = { type: 'industry', value: 'ecommerce', source: 'tiktok_creative_center', region: 'MA', objective: 'purchase', max_items: 30, period_days: 30 };
 
 describe('scan inputs', () => {
-  it('asks Creative Center for the board, with the period as text', () => {
-    expect(creativeCenterScanInput(board)).toEqual({ period: '30', maxItems: 30, regions: ['MA'], objective: 'campaign_objective_conversion' });
-    expect(creativeCenterScanInput({ ...board, type: 'industry', value: 'label_22110000000', objective: null })).toMatchObject({ industry: 'label_22110000000' });
-    expect(creativeCenterScanInput({ ...board, type: 'advertiser', value: 'Temu', region: null, period_days: 7 })).toEqual({ period: '7', maxItems: 30, regions: [...ANY_REGION_COUNTRIES], keywords: ['Temu'], objective: 'campaign_objective_conversion' });
+  it('asks Creative Center for the board, with the period as text, and twice the ads when the scan filters', () => {
+    expect(creativeCenterScanInput(board)).toEqual({ countries: ['MA'], periods: ['30'], maxAds: 60, includeDetails: true, includeKeyframes: false });
+    expect(creativeCenterScanInput({ ...board, type: 'industry', value: 'label_22110000000', objective: null })).toMatchObject({ industries: ['22110000000'], maxAds: 30 });
+    expect(creativeCenterScanInput({ ...board, type: 'advertiser', value: 'Temu', region: null, period_days: 7, objective: null })).toEqual({
+      countries: [...ANY_REGION_COUNTRIES], periods: ['7'], maxAds: 60, includeDetails: true, includeKeyframes: false,
+    });
+  });
+
+  it('scans the MENA countries Creative Center lists, and says when it lists none', () => {
+    expect(creativeCenterScanInput({ ...board, region: 'MENA' }).countries).toEqual(['MA', 'EG', 'SA', 'AE', 'KW', 'QA', 'BH', 'OM', 'JO']);
+    expect(() => creativeCenterScanInput({ ...board, region: 'DZ' })).toThrow('Creative Center has no top ads for DZ');
+  });
+
+  it('asks for twice the ads only on Creative Center boards that filter', () => {
+    expect(scanAsk({ source: 'tiktok_creative_center', type: 'industry', objective: null, max_items: 100 })).toBe(100);
+    expect(scanAsk({ source: 'tiktok_creative_center', type: 'industry', objective: 'purchase', max_items: 100 })).toBe(200);
+    expect(scanAsk({ source: 'tiktok_creative_center', type: 'keyword', objective: null, max_items: 50 })).toBe(100);
+    expect(scanAsk({ source: 'meta_ad_library', type: 'keyword', objective: null, max_items: 50 })).toBe(50);
   });
 
   it('asks the TikTok scraper for metadata only', () => {
@@ -30,9 +59,8 @@ describe('scan inputs', () => {
   });
 
   it('sends every term of a multi-term board, and shares organic results across them', () => {
-    expect(creativeCenterScanInput({ ...board, type: 'keyword', value: 'maroc, الدفع عند الاستلام، livraison gratuite, Maroc' })).toMatchObject({
-      keywords: ['maroc', 'الدفع عند الاستلام', 'livraison gratuite'],
-    });
+    expect(creativeCenterTerms({ type: 'keyword', value: 'maroc, الدفع عند الاستلام، livraison gratuite, Maroc' })).toEqual(['maroc', 'الدفع عند الاستلام', 'livraison gratuite']);
+    expect(creativeCenterTerms({ type: 'industry', value: 'ecommerce' })).toBeNull();
     expect(organicScanInput({ ...board, source: 'tiktok_organic', type: 'keyword', value: 'unboxing maroc, شريت من, عروض المغرب', max_items: 30 })).toMatchObject({
       searchQueries: ['unboxing maroc', 'شريت من', 'عروض المغرب'], resultsPerPage: 10, searchSection: '/video',
     });
@@ -43,12 +71,13 @@ describe('scan inputs', () => {
 
   it('follows the Moroccan advertisers on snowball boards', () => {
     const snowball = { ...board, type: 'snowball', value: 'auto', objective: null };
-    expect(creativeCenterScanInput(snowball, { followed: ['Modines', 'Ecomarts'] })).toMatchObject({ keywords: ['Modines', 'Ecomarts'], regions: ['MA'] });
+    expect(creativeCenterTerms(snowball, { followed: ['Modines', 'Ecomarts'] })).toEqual(['Modines', 'Ecomarts']);
+    expect(creativeCenterScanInput(snowball, { followed: ['Modines'] })).toMatchObject({ countries: ['MA'], maxAds: 60 });
     expect(() => creativeCenterScanInput(snowball, { followed: [] })).toThrow(/No Moroccan advertisers yet/);
   });
 
   it('estimates the scan cost per result', () => {
-    expect(estimateScan(30)).toBeCloseTo(0.095);
+    expect(estimateScan(30)).toBeCloseTo(0.05);
   });
 });
 
@@ -63,6 +92,37 @@ describe('scanned ads', () => {
       metrics: [{ name: 'ctr', value: 0.72, unit: 'score' }, { name: 'likes', value: 16, unit: 'count' }, { name: 'cost_index', value: 0, unit: 'tier' }],
     });
     expect(creativeCenterAd({ adText: 'no id' })).toBeNull();
+  });
+
+  it('reads a row of the sweeping scraper, and skips its status and summary rows', () => {
+    expect(creativeCenterAd(acRow)).toMatchObject({
+      externalId: '7681729212986212373', rank: null, region: 'MA', advertiser: 'Shein Shopping',
+      sourceUrl: 'https://ads.tiktok.com/business/creativecenter/topads/7681729212986212373/',
+      caption: 'Nouvelle collection, livraison gratuite au Maroc', industry: 'label_22102000000',
+      objectiveSource: 'campaign_objective_conversion', durationS: 18.5, coverUrl: 'https://p16-common-sign.tiktokcdn.com/cover-ac.jpeg',
+      landingUrl: 'https://ma.shein.com/sale',
+      metrics: [
+        { name: 'ctr', value: 0.95, unit: 'score' }, { name: 'likes', value: 769, unit: 'count' }, { name: 'cost_index', value: 1, unit: 'tier' },
+        { name: 'comments', value: 24, unit: 'count' }, { name: 'shares', value: 80, unit: 'count' },
+      ],
+    });
+    expect(scanVideoUrl(acRow, new Date('2026-10-07T12:00:00Z'))).toBe('https://cdn.test/ac-540.mp4');
+    expect(scanVideoUrl(acRow, new Date('2026-10-08T04:30:00Z'))).toBeNull();
+    expect(creativeCenterAd({ type: 'summary', materialId: '7681729212986212373' })).toBeNull();
+    expect(creativeCenterAd({ type: 'filters', objectives: [{ id: 1, label: 'App installs' }] })).toBeNull();
+  });
+
+  it('keeps Creative Center ads whose brand, caption or landing page holds a board word', () => {
+    const ad = creativeCenterAd(acRow) as NonNullable<ReturnType<typeof creativeCenterAd>>;
+    expect(creativeCenterTermMatches(ad, ['Shein'])).toBe(true);
+    expect(creativeCenterTermMatches(ad, ['Livraison Gratuite'])).toBe(true);
+    expect(creativeCenterTermMatches(ad, ['Temu', 'maroc'])).toBe(true);
+    expect(creativeCenterTermMatches(ad, ['Temu'])).toBe(false);
+    expect(creativeCenterTermMatches(ad, [])).toBe(false);
+    // Inside a brand run together, but not across words of a caption.
+    expect(creativeCenterTermMatches({ ...ad, advertiser: 'Ali Express' }, ['AliExpress'])).toBe(true);
+    expect(creativeCenterTermMatches({ ...ad, advertiser: null, caption: 'the text emulates', landingUrl: null }, ['temu'])).toBe(false);
+    expect(creativeCenterTermMatches({ ...ad, caption: 'الدفع عند الاستلام في كل المغرب' }, ['الدفع عند الاستلام'])).toBe(true);
   });
 
   it('reads an organic row', () => {
@@ -101,13 +161,13 @@ describe('scanBudget', () => {
   const settings = { monthly_spend_cap_usd: 5 };
 
   it('lets a 200-ad scan through when the month has room, capping the charge at half again the estimate', () => {
-    expect(estimateScan(200)).toBeCloseTo(0.605);
-    expect(scanBudget(settings, 0.12, 200)).toEqual({ ok: true, estimate: estimateScan(200), chargeCap: 0.9075 });
+    expect(estimateScan(200)).toBeCloseTo(0.305);
+    expect(scanBudget(settings, 0.12, 200)).toEqual({ ok: true, estimate: estimateScan(200), chargeCap: 0.4575 });
   });
 
   it('never lets the charge pass what is left of the month', () => {
-    expect(scanBudget(settings, 4.5, 100)).toMatchObject({ ok: true, chargeCap: 0.4575 });
-    expect(scanBudget(settings, 4.7, 100)).toEqual({ ok: false, estimate: estimateScan(100), left: expect.closeTo(0.3, 5) });
+    expect(scanBudget(settings, 4.6, 200)).toMatchObject({ ok: true, chargeCap: 0.4 });
+    expect(scanBudget(settings, 4.9, 100)).toEqual({ ok: false, estimate: estimateScan(100), left: expect.closeTo(0.1, 5) });
     expect(scanBudget({ monthly_spend_cap_usd: 0 }, 0, 10)).toMatchObject({ ok: false, left: 0 });
   });
 });
@@ -189,6 +249,6 @@ describe('Meta Ad Library', () => {
 
   it('prices Meta scans at its scraper\'s rate', () => {
     expect(estimateScan(100, 'meta_ad_library')).toBeCloseTo(0.08, 5);
-    expect(estimateScan(100)).toBeCloseTo(0.305, 5);
+    expect(estimateScan(100)).toBeCloseTo(0.155, 5);
   });
 });

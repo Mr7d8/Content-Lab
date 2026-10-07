@@ -22,7 +22,7 @@ function scanRow(item: Item): Record<string, unknown> {
 }
 
 export function adDuration(item: Item): number | null {
-  return num(item.duration_s) ?? num(scanRow(item).durationSeconds) ?? num((scanRow(item).videoMeta as Record<string, unknown> | undefined)?.duration);
+  return num(item.duration_s) ?? num(scanRow(item).videoDuration) ?? num(scanRow(item).durationSeconds) ?? num((scanRow(item).videoMeta as Record<string, unknown> | undefined)?.duration);
 }
 
 // What Jev reads: the decode's speech and frames plus the ad's metadata.
@@ -32,7 +32,7 @@ export function classifyInput(item: Item, output: DecodeOutput): ClassifyInput {
     source: item.source,
     advertiser: item.advertiser,
     region: item.region,
-    caption: text(scan.adText) ?? text(scan.text),
+    caption: text(scan.adTitle) ?? text(scan.adText) ?? text(scan.text),
     durationS: adDuration(item),
     audioType: output.audio_type,
     transcript: output.segments.map((s) => s.text.trim()).filter(Boolean).join(' ') || null,

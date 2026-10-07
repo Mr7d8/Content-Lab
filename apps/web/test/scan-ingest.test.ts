@@ -58,6 +58,33 @@ describe('planIngest', () => {
     expect(plan.offObjective).toBe(2);
     expect(planIngest(board, rows, 0, NOW).items).toHaveLength(5);
   });
+
+  // Rows of the sweeping Creative Center scraper (automation_craft): no rank,
+  // a summary row in the dataset, and no keyword search.
+  const swept = (materialId: string, extra: Record<string, unknown> = {}) => ({
+    type: 'material', materialId, adTitle: `Ad ${materialId}`, likes: 10, ctr: 0.5, country: 'MA', videoDuration: 15,
+    coverUrl: `https://p16.test/${materialId}.jpeg`, brandName: '', rankInList: 1, ...extra,
+  });
+
+  it('ranks swept ads by their order in the run, and skips the run\'s summary row', () => {
+    const industry = { id: 'b4', type: 'industry', value: 'ecommerce', source: 'tiktok_creative_center', objective: null };
+    const plan = planIngest(industry, [swept('7300000000000000031'), { type: 'summary', adsDelivered: 2 }, swept('7300000000000000032')], 20, NOW);
+    expect([...plan.ranks.entries()]).toEqual([['7300000000000000031', 21], ['7300000000000000032', 23]]);
+    expect(plan.items[0]).toMatchObject({ region: 'MA', duration_s: 15, advertiser: null });
+  });
+
+  it('keeps the ads matching a Creative Center board\'s words, and none when it has no words left', () => {
+    const rows = [
+      swept('7300000000000000041', { brandName: 'Temu' }),
+      swept('7300000000000000042', { adTitle: 'Livraison gratuite partout au Maroc' }),
+      swept('7300000000000000043'),
+    ];
+    const plan = planIngest(board, rows, 0, NOW, ['Temu', 'livraison gratuite']);
+    expect(plan.items.map((i) => i.external_id)).toEqual(['7300000000000000041', '7300000000000000042']);
+    expect(plan.offTerms).toBe(1);
+    expect(planIngest(board, rows, 0, NOW, []).items).toHaveLength(0);
+    expect(planIngest(board, rows, 0, NOW, null).items).toHaveLength(3);
+  });
 });
 
 describe('scanOutcome', () => {

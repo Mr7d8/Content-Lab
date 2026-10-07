@@ -42,7 +42,6 @@ check('NEXT_PUBLIC_SUPABASE_URL', Boolean(env('NEXT_PUBLIC_SUPABASE_URL')), 'Sup
 check('NEXT_PUBLIC_SUPABASE_ANON_KEY', Boolean(env('NEXT_PUBLIC_SUPABASE_ANON_KEY')), 'Supabase > Project settings > API > anon / publishable key.');
 check('SUPABASE_SERVICE_ROLE_KEY', Boolean(env('SUPABASE_SERVICE_ROLE_KEY')), 'Supabase > Project settings > API > service_role key. Server only.');
 check('APIFY_TOKEN', Boolean(env('APIFY_TOKEN')), 'Apify > Settings > API & Integrations. Scans run the scrapers with it.');
-line('OK', 'APIFY_CREATIVE_CENTER_ACTOR_ID', env('APIFY_CREATIVE_CENTER_ACTOR_ID') ? '' : 'not set, using fetch_cat~tiktok-ads-library-scraper');
 line('OK', 'APIFY_TIKTOK_ACTOR_ID', env('APIFY_TIKTOK_ACTOR_ID') ? '' : 'not set, using clockworks~tiktok-scraper');
 check('GEMINI_API_KEY', Boolean(env('GEMINI_API_KEY')), 'aistudio.google.com > Get API key, with billing on. Decodes watch the whole video.');
 check('TYPESAFE_API_KEY', Boolean(env('TYPESAFE_API_KEY')), 'typesafe.ai account > API keys. Jev tags each decoded ad.');
@@ -82,7 +81,7 @@ if (online) {
   if (env('APIFY_TOKEN')) {
     const auth = { Authorization: `Bearer ${env('APIFY_TOKEN')}` };
     await probe('Apify: token', 'https://api.apify.com/v2/users/me', auth);
-    await probe('Apify: Creative Center scraper', `https://api.apify.com/v2/acts/${encodeURIComponent(env('APIFY_CREATIVE_CENTER_ACTOR_ID') || 'fetch_cat~tiktok-ads-library-scraper')}`, auth);
+    await probe('Apify: Creative Center scraper', 'https://api.apify.com/v2/acts/automation_craft~tiktok-creative-center-scraper', auth);
     await probe('Apify: TikTok scraper', `https://api.apify.com/v2/acts/${encodeURIComponent(env('APIFY_TIKTOK_ACTOR_ID') || 'clockworks~tiktok-scraper')}`, auth);
   }
   if (env('GEMINI_API_KEY')) {

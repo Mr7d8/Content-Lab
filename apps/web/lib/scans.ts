@@ -1,6 +1,6 @@
 import 'server-only';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
-import { boardSearches, estimateScan, scanInput, type BoardSearch, type Json, type TablesInsert } from '@content-lab/core';
+import { boardSearches, creativeCenterTerms, estimateScan, scanAsk, scanInput, type BoardSearch, type Json, type TablesInsert } from '@content-lab/core';
 import type { AdminClient } from './admin';
 import { FINISHED_RUN_STATUSES, getActorRun, getDatasetItems, startActorRun } from './apify';
 import { cacheCover } from './covers';
@@ -12,8 +12,10 @@ const PAGE = 50;
 // A scan with no progress for this long was left behind; a new one may start.
 const STALE_SCAN_MS = 15 * 60_000;
 
+// Creative Center's scraper is fixed: its input and rows are read by
+// creativeCenterScanInput and creativeCenterAd.
 const ACTORS = {
-  tiktok_creative_center: () => process.env.APIFY_CREATIVE_CENTER_ACTOR_ID || 'fetch_cat~tiktok-ads-library-scraper',
+  tiktok_creative_center: () => 'automation_craft~tiktok-creative-center-scraper',
   tiktok_organic: () => process.env.APIFY_TIKTOK_ACTOR_ID || 'clockworks~tiktok-scraper',
   meta_ad_library: () => process.env.APIFY_META_ACTOR_ID || 'curious_coder~facebook-ads-library-scraper',
 } as const;
@@ -85,7 +87,8 @@ export async function startScan(admin: AdminClient, boardId: string, trigger: 'm
 
   // The whole scan must fit what is left of the month; each run may charge
   // up to half again its share, never past the month.
-  const estimates = searches.map((s) => estimateScan(board.max_items, s.source));
+  const asks = searches.map((s) => scanAsk({ ...s, max_items: board.max_items }));
+  const estimates = searches.map((s, i) => estimateScan(asks[i] as number, s.source));
   const estimate = estimates.reduce((a, b) => a + b, 0);
   const left = Math.max(0, Number(settings.monthly_spend_cap_usd) - Number(spend ?? 0));
   if (estimate > left) {
@@ -107,7 +110,7 @@ export async function startScan(admin: AdminClient, boardId: string, trigger: 'm
     const cap = Math.floor(Math.min(left * (own / estimate), own * 1.5) * 10000) / 10000;
     const row: TablesInsert<'runs'> = {
       source: s.source, watchlist_id: board.id, kind: 'scan', trigger, status: 'running', started_at: now,
-      items_requested: board.max_items, spend_cap_usd: cap, cost_estimate_usd: Number(own.toFixed(4)),
+      items_requested: asks[i] as number, spend_cap_usd: cap, cost_estimate_usd: Number(own.toFixed(4)),
       batch_id: batch, search_json: batch ? (s as unknown as Json) : null,
     };
     const { data: run, error } = await admin.from('runs').insert(row).select('id').single();
@@ -120,7 +123,7 @@ export async function startScan(admin: AdminClient, boardId: string, trigger: 'm
       const started = await startActorRun(ACTORS[s.source as keyof typeof ACTORS](), inputs[i], {
         token,
         timeoutS: SCAN_TIMEOUT_S,
-        maxItems: board.max_items,
+        maxItems: asks[i] as number,
         maxTotalChargeUsd: cap,
         webhookUrl: hook && site ? `${site}/api/apify/webhook?run=${run.id}&token=${hook}` : null,
       });
@@ -157,6 +160,7 @@ export async function syncScan(admin: AdminClient, runId: string, budgetMs = 800
     ? { id: row.id, type: search.type, value: search.value, source: search.source, objective: search.objective, moroccan_only: row.moroccan_only && search.moroccan_only }
     : row;
 
+  const terms = await termsFor(admin, board);
   const token = apifyToken();
   const actorRun = await getActorRun(run.worker_run_id, token);
   const finished = (FINISHED_RUN_STATUSES as readonly string[]).includes(actorRun.status);
@@ -165,7 +169,7 @@ export async function syncScan(admin: AdminClient, runId: string, budgetMs = 800
   let drained = false;
   while (Date.now() - started < budgetMs) {
     const rows = await getDatasetItems(run.apify_dataset_id, offset, PAGE, token);
-    if (rows.length) added += await ingest(admin, board, rows, offset);
+    if (rows.length) added += await ingest(admin, board, rows, offset, terms);
     offset += rows.length;
     if (rows.length < PAGE) {
       drained = true;
@@ -187,6 +191,19 @@ export async function syncScan(admin: AdminClient, runId: string, budgetMs = 800
 }
 
 type IngestBoard = { id: string; type: string; value: string; source: string; objective: string | null; moroccan_only: boolean };
+
+// The words a Creative Center board keeps ads for (its scraper cannot
+// search), or null to keep every ad.
+async function termsFor(admin: AdminClient, board: IngestBoard): Promise<string[] | null> {
+  if (board.source !== 'tiktok_creative_center') return null;
+  try {
+    return creativeCenterTerms(board, board.type === 'snowball' ? { followed: await followedAdvertisers(admin) } : {});
+  } catch {
+    // A snowball board whose advertisers were all unmarked since the scan
+    // started: no words, so no ad is kept.
+    return [];
+  }
+}
 
 // Where each ad of a page goes on the board: everything shows on an ordinary
 // board; a Moroccan board shows Moroccan ads, leaves out the others and
@@ -211,9 +228,9 @@ async function gateFor(admin: AdminClient, board: IngestBoard, ads: ReturnType<t
 // rank order, metric snapshots, covers. Ads run for another objective than
 // the board's are left out, and a Moroccan board gates the rest. Returns how
 // many ads are new to the board.
-async function ingest(admin: AdminClient, board: IngestBoard, rows: Record<string, unknown>[], offset: number): Promise<number> {
+async function ingest(admin: AdminClient, board: IngestBoard, rows: Record<string, unknown>[], offset: number, terms: string[] | null): Promise<number> {
   const now = new Date().toISOString();
-  const plan = planIngest(board, rows, offset, now);
+  const plan = planIngest(board, rows, offset, now, terms);
   if (!plan.items.length) return 0;
   const gate = await gateFor(admin, board, plan.ads);
 

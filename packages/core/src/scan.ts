@@ -1,4 +1,4 @@
-import { ANY_REGION_COUNTRIES, CREATIVE_CENTER_OBJECTIVE, expandRegion, metaPageId, REGION_GROUPS } from './sources';
+import { ANY_REGION_COUNTRIES, CREATIVE_CENTER_COUNTRIES, expandRegion, metaPageId, REGION_GROUPS } from './sources';
 import type { Tables } from './db';
 import { MAX_TERMS, searchTerms } from './terms';
 import { parseLink } from './urls';
@@ -19,20 +19,49 @@ const isIndustryKey = (value: string) => /^label_\d+$/.test(value);
 // advertisers marked Moroccan, newest first.
 export type ScanExtras = { followed?: string[] };
 
-// Input for fetch_cat/tiktok-ads-library-scraper (checked on a real run:
-// period is "7", "30" or "180"; regions and keywords are lists).
-export function creativeCenterScanInput(board: Board, extras: ScanExtras = {}): Raw {
-  const input: Raw = { period: String(board.period_days), maxItems: board.max_items };
-  input.regions = expandRegion(board.region) ?? [...ANY_REGION_COUNTRIES];
-  if (board.type === 'advertiser' || board.type === 'keyword') input.keywords = searchTerms(board.value, board.type);
+// Creative Center boards that keep only ads matching their words.
+const TERM_TYPES = new Set(['advertiser', 'keyword', 'snowball']);
+
+// Creative Center shows a visitor without a TikTok login one list of 20 ads
+// per filter combination, and no keyword search. The scraper
+// (automation_craft/tiktok-creative-center-scraper) sweeps sort orders,
+// industries and objectives for more, and cannot filter by objective (it
+// takes TikTok's numeric ids) or by words; the scan does both as the ads come
+// in. A board that filters asks for twice its ads, to keep about as many.
+export function scanAsk(board: Pick<Board, 'source' | 'type' | 'objective' | 'max_items'>): number {
+  if (board.source !== 'tiktok_creative_center') return board.max_items;
+  return board.objective || TERM_TYPES.has(board.type) ? board.max_items * 2 : board.max_items;
+}
+
+// The words a Creative Center board keeps ads for, or null to keep every ad.
+// A snowball board follows the advertisers marked Moroccan (extras.followed).
+export function creativeCenterTerms(board: Pick<Board, 'type' | 'value'>, extras: ScanExtras = {}): string[] | null {
   if (board.type === 'snowball') {
     const names = (extras.followed ?? []).slice(0, MAX_TERMS);
     if (!names.length) throw new Error('No Moroccan advertisers yet: scan a Moroccan board so its ads get checked, or mark ads Moroccan');
-    input.keywords = names;
+    return names;
   }
-  if (board.type === 'industry' && isIndustryKey(board.value)) input.industry = board.value;
-  const objective = board.objective ? CREATIVE_CENTER_OBJECTIVE[board.objective as keyof typeof CREATIVE_CENTER_OBJECTIVE] : undefined;
-  if (objective) input.objective = objective;
+  return TERM_TYPES.has(board.type) ? searchTerms(board.value, board.type) : null;
+}
+
+// Input for automation_craft/tiktok-creative-center-scraper (its input
+// schema, 2026-10-07): countries and periods are lists, period "7", "30" or
+// "180", industries are ids without the label_ prefix. The detail record
+// (landing page, comments, shares) comes with every ad at no extra cost.
+export function creativeCenterScanInput(board: Board, extras: ScanExtras = {}): Raw {
+  // A snowball board with no advertisers to follow has nothing to scan.
+  creativeCenterTerms(board, extras);
+  const wanted = expandRegion(board.region) ?? [...ANY_REGION_COUNTRIES];
+  const countries = wanted.filter((c) => CREATIVE_CENTER_COUNTRIES.has(c));
+  if (!countries.length) throw new Error(`Creative Center has no top ads for ${wanted.join(', ')}`);
+  const input: Raw = {
+    countries,
+    periods: [String(board.period_days)],
+    maxAds: scanAsk(board),
+    includeDetails: true,
+    includeKeyframes: false,
+  };
+  if (board.type === 'industry' && isIndustryKey(board.value)) input.industries = [board.value.replace(/^label_/, '')];
   return input;
 }
 
@@ -92,10 +121,10 @@ export function scanInput(board: Board, extras: ScanExtras = {}): Raw {
 }
 
 // Rough paid cost before a scan, from each scraper's pay-per-result pricing
-// on Apify (Meta: $0.75 per 1,000 ads). The real cost is read back from the
+// on Apify (Creative Center: $1.50 per 1,000 ads; Meta: $0.75 per 1,000). The real cost is read back from the
 // Apify run when it ends.
 export const SCAN_RATES: Readonly<Record<string, { perRunUsd: number; perResultUsd: number }>> = {
-  tiktok_creative_center: { perRunUsd: 0.005, perResultUsd: 0.003 },
+  tiktok_creative_center: { perRunUsd: 0.005, perResultUsd: 0.0015 },
   tiktok_organic: { perRunUsd: 0.005, perResultUsd: 0.003 },
   meta_ad_library: { perRunUsd: 0.005, perResultUsd: 0.00075 },
 };
@@ -149,32 +178,59 @@ const num = (v: unknown): number | null => {
 };
 const metric = (name: string, value: number | null, unit: string): ScanMetric[] => (value === null ? [] : [{ name, value, unit }]);
 
-// A Creative Center row from fetch_cat/tiktok-ads-library-scraper.
+// Creative Center's budget tiers, as its cost index (0, 1, 2).
+const COST_TIERS: Readonly<Record<string, number>> = { low: 0, medium: 1, high: 2 };
+
+// A Creative Center row from automation_craft/tiktok-creative-center-scraper,
+// or from fetch_cat/tiktok-ads-library-scraper (scans before 2026-10-07).
+// The run's status, filters and summary rows carry no ad and are skipped.
 export function creativeCenterAd(raw: Raw): ScannedAd | null {
-  const fromUrl = parseLink(str(raw.detailUrl) ?? '');
-  const id = str(raw.adId ?? raw.material_id ?? raw.id) ?? (fromUrl.ok ? fromUrl.externalId : null);
+  if (raw.type !== undefined && raw.type !== 'material') return null;
+  const fromUrl = parseLink(str(raw.creativeCenterUrl) ?? str(raw.detailUrl) ?? '');
+  const id = str(raw.materialId ?? raw.adId ?? raw.material_id ?? raw.id) ?? (fromUrl.ok ? fromUrl.externalId : null);
   if (!id || !/^\d{8,25}$/.test(id)) return null;
+  const tier = str(raw.costTier)?.toLowerCase();
   return {
     source: 'tiktok_creative_center',
     externalId: id,
     sourceUrl: `https://ads.tiktok.com/business/creativecenter/topads/${id}/`,
+    // A sweep's rows come from many lists of 20, each ranked on its own
+    // (rankInList), so they carry no rank and their order in the run ranks them.
     rank: num(raw.rank),
     advertiser: str(raw.brandName) ?? str(raw.advertiserName),
     handle: null,
-    caption: str(raw.adText),
-    region: str(raw.countryCode)?.toUpperCase() ?? null,
+    caption: str(raw.adTitle) ?? str(raw.adText),
+    region: (str(raw.country) ?? str(raw.countryCode))?.toUpperCase() ?? null,
     industry: str(raw.industryKey),
     objectiveSource: str(raw.objectiveKey),
-    durationS: num(raw.durationSeconds),
+    durationS: num(raw.videoDuration) ?? num(raw.durationSeconds),
     postedAt: null,
-    coverUrl: str(raw.coverImageUrl),
+    coverUrl: str(raw.coverUrl) ?? str(raw.coverImageUrl),
+    landingUrl: str(raw.landingPage) ?? str(raw.landingPageUrl),
     metrics: [
       ...metric('ctr', num(raw.ctr), 'score'),
       ...metric('likes', num(raw.likes), 'count'),
-      ...metric('cost_index', num(raw.costIndex), 'tier'),
+      ...metric('cost_index', tier && tier in COST_TIERS ? (COST_TIERS[tier] as number) : num(raw.costIndex), 'tier'),
+      ...metric('comments', num(raw.comments), 'count'),
+      ...metric('shares', num(raw.shares), 'count'),
     ],
     raw,
   };
+}
+
+const plain = (s: string) => s.toLowerCase().normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
+// Whether a Creative Center ad matches one of a board's words: a word or
+// phrase starting a word of its brand, caption or landing page ("maroc",
+// "livraison gratuite", "shein.com"), or inside its brand run together
+// ("Ali Express" for AliExpress).
+export function creativeCenterTermMatches(ad: ScannedAd, terms: string[]): boolean {
+  const text = ` ${plain([ad.advertiser, ad.caption, ad.landingUrl].filter(Boolean).join(' '))}`;
+  const brand = plain(ad.advertiser ?? '').replace(/ /g, '');
+  return terms.some((t) => {
+    const want = plain(t);
+    return !!want && (text.includes(` ${want}`) || (!!brand && brand.includes(want.replace(/ /g, ''))));
+  });
 }
 
 // An organic row from clockworks/tiktok-scraper.

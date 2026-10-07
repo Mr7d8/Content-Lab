@@ -44,13 +44,21 @@ function apifyToken(): string {
   return token;
 }
 
+// Creative Center ads scanned before 2026-10-07 get their landing page from
+// their detail page, through the scraper those scans used. Today's scraper
+// brings each ad's detail record with the scan, so a lookup has nothing to add.
+const DETAIL_ACTOR = 'fetch_cat~tiktok-ads-library-scraper';
+const hasDetail = (item: Item) => {
+  const scan = obj(item.scan_json);
+  return 'materialId' in scan || !!str(scan.landingPageUrl);
+};
+
 // Landing page addresses for Creative Center ads, from their detail pages.
 async function landingUrls(items: Item[]): Promise<{ urls: Map<string, string>; costUsd: number }> {
   const urls = new Map<string, string>();
-  const cc = items.filter((i) => i.source === 'tiktok_creative_center');
+  const cc = items.filter((i) => i.source === 'tiktok_creative_center' && !hasDetail(i));
   if (!cc.length) return { urls, costUsd: 0 };
-  const actor = process.env.APIFY_CREATIVE_CENTER_ACTOR_ID || 'fetch_cat~tiktok-ads-library-scraper';
-  const { rows } = await runActorSync(actor, { startUrls: cc.map((i) => ({ url: i.source_url })), maxItems: cc.length * 2 }, {
+  const { rows } = await runActorSync(DETAIL_ACTOR, { startUrls: cc.map((i) => ({ url: i.source_url })), maxItems: cc.length * 2 }, {
     token: apifyToken(), timeoutS: 120, maxItems: cc.length * 2, what: 'reading the ads\' detail pages',
   });
   for (const row of rows) {

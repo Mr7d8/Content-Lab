@@ -66,16 +66,18 @@ export function expandRegion(region: string | null): string[] | null {
   return [...(REGION_GROUPS[region] ?? [region])];
 }
 
-// Our objectives mapped to Creative Center's objective keys. If the actor
-// rejects them, the search runs without the filter and the run says so.
-export const CREATIVE_CENTER_OBJECTIVE = {
-  app_install: 'campaign_objective_app_installs',
-  purchase: 'campaign_objective_conversion',
-} as const;
+// The countries Creative Center lists top ads for (the Creative Center
+// scraper's own list, 2026-10-07). Algeria, Tunisia, Lebanon and Iraq are not
+// among them, so a MENA board scans the rest.
+export const CREATIVE_CENTER_COUNTRIES: ReadonlySet<string> = new Set([
+  'AR', 'AU', 'AT', 'BH', 'BD', 'BY', 'BE', 'BR', 'BG', 'KH', 'CA', 'CL', 'CO', 'HR', 'CZ', 'DK', 'EG', 'FI', 'FR', 'DE', 'GR',
+  'HU', 'ID', 'IE', 'IL', 'IT', 'JP', 'JO', 'KZ', 'KW', 'MY', 'MX', 'MA', 'NL', 'NZ', 'NO', 'OM', 'PK', 'PE', 'PH', 'PL', 'PT',
+  'QA', 'RO', 'RU', 'SA', 'SG', 'SK', 'ZA', 'KR', 'ES', 'SE', 'CH', 'TW', 'TH', 'TR', 'UA', 'AE', 'GB', 'US', 'VN',
+]);
 
-// Creative Center objectives that count as each of ours. The scraper does not
-// always apply the objective filter (a Morocco purchase scan came back with
-// reach, video view, traffic and lead ads), so scans check each ad as well.
+// Creative Center objectives that count as each of ours. Scans sweep every
+// objective (the scraper takes TikTok's numeric objective ids, which TikTok
+// does not publish), so each ad is checked against the board's objective.
 const OBJECTIVE_MATCHES: Readonly<Record<string, RegExp>> = {
   purchase: /^campaign_objective_(conversion|product_sales|shop_purchases?)$/,
   app_install: /^campaign_objective_(app_installs?|app_promotion)$/,
