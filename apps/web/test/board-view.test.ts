@@ -16,6 +16,7 @@ import {
   logTicks,
   parseSavedView,
   rankAds,
+  scanCutoff,
   scanOfRuns,
   scanProgress,
   scanSummary,
@@ -225,7 +226,7 @@ describe('splitByScan', () => {
 describe('scanSummary', () => {
   it('counts the rows that did not land on the board', () => {
     // The Morocco board's scan of 2026-10-02: 100 rows, 75 ads kept.
-    expect(scanSummary({ status: 'completed', synced: 100, requested: 100, kept: 75 })).toEqual({ found: 100, requested: 100, skipped: 25 });
+    expect(scanSummary({ status: 'completed', synced: 100, requested: 100, kept: 75 })).toEqual({ found: 100, requested: 100, skipped: 25, short: false });
   });
 
   it('says nothing about a scan that has not finished well', () => {
@@ -235,7 +236,48 @@ describe('scanSummary', () => {
   });
 
   it('never reports more found than asked for, or skipped below zero', () => {
-    expect(scanSummary({ status: 'completed', synced: 18, requested: 0, kept: 20 })).toEqual({ found: 18, requested: 18, skipped: 0 });
+    expect(scanSummary({ status: 'completed', synced: 18, requested: 0, kept: 20 })).toEqual({ found: 18, requested: 18, skipped: 0, short: false });
+  });
+
+  it('says when the scraper stopped early', () => {
+    expect(scanSummary({ status: 'completed', synced: 19, requested: 100, kept: 17, short: true })).toMatchObject({ found: 19, short: true });
+  });
+});
+
+describe('scanCutoff', () => {
+  const run = (id: string, startedAt: string, synced: number, extra: Partial<{ batch_id: string; items_requested: number }> = {}) => ({
+    id, batch_id: null, started_at: startedAt, synced_count: synced, items_requested: 100, ...extra,
+  });
+
+  it('counts from the latest scan when it brought back a full set', () => {
+    expect(scanCutoff([run('c', '2026-10-05T15:13:16Z', 99), run('b', '2026-10-05T14:39:57Z', 59)])).toEqual({ cutoff: '2026-10-05T15:13:16Z', short: false });
+  });
+
+  it('keeps the ads of the last full scan when the scraper stopped early', () => {
+    // Morocco e-commerce, Purchase: 99 rows on 2026-10-05, then 39, then 19 of 100.
+    const runs = [run('d', '2026-10-07T10:44:42Z', 19), run('c', '2026-10-06T12:11:05Z', 39), run('b', '2026-10-05T15:13:16Z', 99), run('a', '2026-10-05T14:39:57Z', 59)];
+    expect(scanCutoff(runs)).toEqual({ cutoff: '2026-10-05T15:13:16Z', short: true });
+  });
+
+  it('does not call a small search short when it always brings back a few', () => {
+    expect(scanCutoff([run('b', '2026-10-04T10:00:00Z', 5, { items_requested: 80 }), run('a', '2026-10-03T01:15:32Z', 6, { items_requested: 80 })])).toEqual({ cutoff: '2026-10-04T10:00:00Z', short: false });
+  });
+
+  it('compares what each scan filled, so asking for fewer ads is not short', () => {
+    expect(scanCutoff([run('b', '2026-10-04T10:00:00Z', 30, { items_requested: 30 }), run('a', '2026-10-03T10:00:00Z', 99)])).toEqual({ cutoff: '2026-10-04T10:00:00Z', short: false });
+  });
+
+  it('takes a scan of several searches as one, from its first start', () => {
+    const runs = [
+      run('b2', '2026-10-04T10:00:01Z', 70, { batch_id: 'x' }),
+      run('b1', '2026-10-04T10:00:00Z', 60, { batch_id: 'x' }),
+      run('a', '2026-10-03T10:00:00Z', 90),
+    ];
+    expect(scanCutoff(runs)).toEqual({ cutoff: '2026-10-04T10:00:00Z', short: false });
+  });
+
+  it('has no cutoff before any scan finished', () => {
+    expect(scanCutoff([])).toEqual({ cutoff: null, short: false });
   });
 });
 

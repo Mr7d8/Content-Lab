@@ -106,7 +106,9 @@ function MediaCard({
     : scan.phase === 'failed' && scan.error
       ? `Scan failed: ${scan.error}`
       : rescanned && scan.phase === 'completed'
-        ? 'The rescan did not find this ad again, so its video stays expired.'
+        ? scan.requested > 0
+          ? `The rescan brought back ${scan.synced} of ${scan.requested} ads, not this one, so its video stays expired.`
+          : 'The rescan did not find this ad again, so its video stays expired.'
         : 'The video link expired. A rescan brings new ads, and fresh videos for the ones it finds again.';
   const live = useRef(true);
   const saveVideo = useCallback(() => {

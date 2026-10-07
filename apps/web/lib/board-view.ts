@@ -391,12 +391,41 @@ export function parseSavedView(raw: string | null): SavedView | null {
 
 // What the latest finished scan brought in: the scraper's rows against the ads
 // asked for, and the rows that did not land on the board (run for another
-// objective than the board's, or the same ad twice).
-export type ScanSummary = { found: number; requested: number; skipped: number };
+// objective than the board's, or the same ad twice). short: the scraper
+// stopped early (see scanCutoff).
+export type ScanSummary = { found: number; requested: number; skipped: number; short: boolean };
 
-export function scanSummary(scan: { status: string; synced: number; requested: number; kept: number } | null): ScanSummary | null {
+export function scanSummary(scan: { status: string; synced: number; requested: number; kept: number; short?: boolean } | null): ScanSummary | null {
   if (!scan || scan.status !== 'completed') return null;
-  return { found: scan.synced, requested: Math.max(scan.requested, scan.synced), skipped: Math.max(0, scan.synced - scan.kept) };
+  return { found: scan.synced, requested: Math.max(scan.requested, scan.synced), skipped: Math.max(0, scan.synced - scan.kept), short: !!scan.short };
+}
+
+export type FinishedScanRun = { id: string; batch_id: string | null; started_at: string | null; synced_count: number; items_requested: number };
+
+// Where the latest finished scan starts, for splitByScan, from the board's
+// completed scan runs, newest first. The scraper is sometimes cut off after a
+// page or two (Creative Center gave 99, then 39, then 19 of the same 100):
+// a scan that filled less than half as much of what it asked for as an
+// earlier one does not hide the ads the earlier scans found. The board then
+// counts from the last scan that was not cut short, and short says so.
+export function scanCutoff(runs: FinishedScanRun[]): { cutoff: string | null; short: boolean } {
+  const scans: { startedAt: string | null; synced: number; requested: number }[] = [];
+  const byKey = new Map<string, (typeof scans)[number]>();
+  for (const r of runs) {
+    const key = r.batch_id ?? r.id;
+    let scan = byKey.get(key);
+    if (!scan) {
+      scan = { startedAt: r.started_at, synced: 0, requested: 0 };
+      byKey.set(key, scan);
+      scans.push(scan);
+    }
+    scan.synced += r.synced_count;
+    scan.requested += r.items_requested;
+    if (r.started_at && (!scan.startedAt || Date.parse(r.started_at) < Date.parse(scan.startedAt))) scan.startedAt = r.started_at;
+  }
+  const fill = (s: (typeof scans)[number]) => s.synced / Math.max(1, s.requested);
+  const at = scans.findIndex((s, i) => fill(s) * 2 >= Math.max(0, ...scans.slice(i + 1).map(fill)));
+  return { cutoff: scans[at]?.startedAt ?? null, short: at > 0 };
 }
 
 // Rows read out of the ads asked for, while a scan runs. Before the run says
