@@ -1,7 +1,7 @@
 import 'server-only';
 import { boardSourcesLabel, type Tables } from '@content-lab/core';
 import type { ServerClient } from './supabase/server';
-import { scanCutoff, scanOfRuns, toBoardAd, type BoardAd } from './board-view';
+import { onBoard, scanCutoff, scanOfRuns, toBoardAd, type BoardAd } from './board-view';
 import type { GateStatus } from './gate';
 
 // sources: the board's sources, as shown ("Meta Ad Library + TikTok Creative Center").
@@ -77,11 +77,11 @@ export async function loadBoard(supabase: ServerClient, boardId: string): Promis
   const mediaById = new Map((media ?? []).map((m) => [m.item_id, m]));
 
   const now = new Date();
-  // An ad with no cover left (no saved copy, and the source's link expired)
-  // stays off the board; a later scan that sees it again brings it back.
+  // An ad whose cover or video link expired stays off the board unless it
+  // was decoded (onBoard); a later scan that sees it again brings it back.
   const ads = rows
     .map(({ rank, seenAt, gate, item }) => ({ ...toBoardAd(item, rank, latestClass.get(item.id) ?? null, mediaById.get(item.id) ?? null, now), seenAt, gate }))
-    .filter((ad) => ad.cover !== null);
+    .filter(onBoard);
   return {
     board,
     ads,

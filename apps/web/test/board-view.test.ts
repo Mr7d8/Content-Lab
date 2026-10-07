@@ -14,6 +14,7 @@ import {
   marketCounts,
   formatTick,
   logTicks,
+  onBoard,
   parseSavedView,
   rankAds,
   scanCutoff,
@@ -205,6 +206,24 @@ describe('spreadPoints', () => {
     expect(spreadPoints([{ id: 'a', x: 10, y: 10 }, { id: 'b', x: 300, y: 300 }], 20, 40, bounds)).toEqual([{ id: 'a', x: 10, y: 10 }, { id: 'b', x: 300, y: 300 }]);
     const edge = spreadPoints([{ id: 'a', x: 0, y: 250 }, { id: 'b', x: 1, y: 250 }], 20, 40, bounds);
     expect(edge.every((p) => p.x >= 0 && p.x <= 500)).toBe(true);
+  });
+});
+
+describe('onBoard', () => {
+  const cover = 'https://covers.test/a.jpg';
+
+  it('keeps ads whose video still plays, and decoded ones once it expired', () => {
+    expect(onBoard(ad('live', { cover, video: 'https://cdn.test/a.mp4' }))).toBe(true);
+    expect(onBoard(ad('expired', { cover }))).toBe(false);
+    expect(onBoard(ad('decoded', { cover, decode: { status: 'done', error: null, at: null } }))).toBe(true);
+    expect(onBoard(ad('decoding', { cover, decode: { status: 'running', error: null, at: null } }))).toBe(true);
+    expect(onBoard(ad('failed', { cover, decode: { status: 'failed', error: 'The video link expired', at: null } }))).toBe(false);
+    expect(onBoard(ad('meta', { cover, source: 'meta_ad_library' }))).toBe(false);
+  });
+
+  it('keeps organic posts, which carry no video link, and drops ads with no cover', () => {
+    expect(onBoard(ad('post', { cover, source: 'tiktok_organic' }))).toBe(true);
+    expect(onBoard(ad('no-cover', { video: 'https://cdn.test/a.mp4' }))).toBe(false);
   });
 });
 

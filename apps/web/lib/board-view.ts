@@ -97,6 +97,16 @@ export function toBoardAd(item: ItemRow, rank: number | null, labels: ClassRow |
   };
 }
 
+// Whether an ad stays on the board: it needs a cover, and a video that still
+// plays (the source's link while it lasts, or the copy saved with a decode),
+// unless it was decoded or is decoding. Organic posts carry no video link to
+// expire (a decode fetches its own copy), so they stay. Nothing is deleted:
+// a later scan that sees an ad again brings it back with fresh links.
+export function onBoard(ad: Pick<BoardAd, 'source' | 'cover' | 'video' | 'decode'>): boolean {
+  if (ad.cover === null) return false;
+  return ad.source === 'tiktok_organic' || !!ad.video || ad.decode.status === 'done' || ad.decode.status === 'running';
+}
+
 // The team's call first, then the landing page and cover check, then what the
 // ad says and shows (with its decode). The model's own summary is left out.
 function marketOf(item: ItemRow, scanned: ReturnType<typeof scannedAd>, media: MediaRow | null, labels: Record<string, unknown> | null, breakdown: Breakdown | null): BoardAd['market'] {

@@ -121,7 +121,7 @@ function ScanLine({ board, scan, count, summary }: { board: Tables<'watchlists'>
       {last ? `Scanned ${last}` : 'Never scanned'}
       {summary && <span className="tabular-nums"> · {summary.found}/{summary.requested} found</span>}
       {summary?.short && (
-        <span className="text-orange" title="DD brought back far fewer ads than an earlier scan: TikTok sometimes cuts the scraper off after a page or two. The ads of earlier scans stay on the board; scan again later for a full set.">
+        <span className="text-orange" title="DD brought back far fewer ads than an earlier scan. The ads of earlier scans whose videos still play, and the decoded ones, stay on the board; scan again later for a full set.">
           {' '}· DD stopped early, earlier ads kept
         </span>
       )}
