@@ -9,6 +9,17 @@ export async function siteOrigin(): Promise<string> {
   return process.env.NEXT_PUBLIC_SITE_URL ?? `${h.get('x-forwarded-proto') ?? 'http'}://${h.get('host')}`;
 }
 
+// What someone not on the team is told, at sign in and on the dashboard.
+// waiting: their request could not be filed (see requestAccess).
+export const accessText = (email: string) => ({
+  pending: {
+    title: 'Request sent',
+    body: `${email} is not on the team yet, so your request to join was sent to an admin. Once they accept it, you get a sign-in link at this address.`,
+  },
+  declined: { title: 'Access declined', body: `An admin declined access for ${email}. Ask them directly if this is a mistake.` },
+  waiting: { title: 'Waiting for access', body: `${email} is not on the team yet. An admin needs to let you in before you can open the boards.` },
+});
+
 // Sign in: a team member gets a link; anyone else files an access request for
 // an admin, once (a declined request stays declined until an admin accepts
 // it). null when the check cannot run (no service role key, or the

@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { AccessNotice } from '@/components/access-notice';
 import { SetupNotice } from '@/components/setup-notice';
 import { requestAccess } from '@/lib/access';
 import { supabaseEnv } from '@/lib/env';
@@ -37,40 +38,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // Signed in with a link sent before the team check, or removed since:
     // their request goes to an admin like at sign in.
     const access = await requestAccess(email.toLowerCase());
-    return (
-      <main className="mx-auto max-w-lg px-4 py-24">
-        <div className="card p-6">
-          <p className="eyebrow">Access</p>
-          {access === 'pending' ? (
-            <>
-              <h1 className="mt-1 text-xl font-semibold">Request sent</h1>
-              <p className="mt-2 text-sm text-sub">
-                {email} is not on the Content Lab team yet, so your request to join was sent to an admin. Once they accept it,
-                you get a sign-in link at this address.
-              </p>
-            </>
-          ) : access === 'declined' ? (
-            <>
-              <h1 className="mt-1 text-xl font-semibold">Access declined</h1>
-              <p className="mt-2 text-sm text-sub">An admin declined access for {email}. Ask them directly if this is a mistake.</p>
-            </>
-          ) : (
-            <>
-              <h1 className="mt-1 text-xl font-semibold">Not on the team yet</h1>
-              <p className="mt-2 text-sm text-sub">
-                {email} is signed in but not on the Content Lab allowlist. An admin adds it in the Supabase SQL editor:
-              </p>
-              <pre className="mt-3 overflow-x-auto rounded-[10px] bg-fill p-3 text-xs">
-                {`insert into public.team_members (email)\nvalues ('${email.toLowerCase()}');`}
-              </pre>
-            </>
-          )}
-          <form action="/auth/signout" method="post" className="mt-4">
-            <button type="submit" className="btn-secondary">Sign out</button>
-          </form>
-        </div>
-      </main>
-    );
+    return <AccessNotice email={email} status={access === 'member' ? null : access} />;
   }
 
   // The board draws its own chrome.
